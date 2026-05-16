@@ -1,0 +1,3 @@
+[workspace]
+members = ["bubblewand", "bubblewand-generator"]
+resolver = "2"

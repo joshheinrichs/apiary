@@ -1,0 +1,13 @@
+[package]
+name = "bubblewand-generator"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "bubblewand-generator"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+bubblewand = { path = "../bubblewand" }
+shell-words = "1"

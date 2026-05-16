@@ -1,0 +1,17 @@
+[package]
+name = "bubblewand"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "bubblewand"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bubblewand"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+libc = "0.2"
+xdg = "3"

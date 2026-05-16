@@ -1,0 +1,9 @@
+[package]
+name = "home-applicator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+walkdir = "2"
+anyhow = "1"
+dirs = "6"
