@@ -1,8 +1,12 @@
+use std::io::Write;
+use std::os::unix::io::{IntoRawFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::process::{self, Command};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use nix::unistd::dup2;
 use procfs::process::Process;
 
 const SYSTEMD_RUN: &str = match option_env!("SYSTEMD_RUN") {
@@ -71,6 +75,20 @@ fn parent_slice_from_cgroup(path: &str) -> &str {
     // parent unit name is sufficient — using the full cgroup path would
     // cause duplicate prefix segments (e.g. session-session-1-apps.slice).
     user_rel.rsplit('/').nth(1).unwrap_or("")
+}
+
+fn journal_stream(identifier: &str, priority: u8) -> Result<RawFd> {
+    let socket_path = xdg::BaseDirectories::new()
+        .ok()
+        .and_then(|bd| bd.get_runtime_directory().ok().map(|p| p.join("systemd/journal/stdout")))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| "/run/systemd/journal/stdout".into());
+
+    let mut stream = UnixStream::connect(&socket_path)
+        .with_context(|| format!("connect to {}", socket_path.display()))?;
+    write!(stream, "{identifier}\n\n{priority}\n0\n0\n0\n0\n")
+        .context("send journald stream header")?;
+    Ok(stream.into_raw_fd())
 }
 
 fn detect_parent_slice() -> Result<String> {
@@ -171,6 +189,15 @@ fn main() -> Result<()> {
             format!("{slice_base}-app-{}-{}.scope", unit_escape(basename), process::id())
         }
     };
+
+    let journal_id = unit_name.trim_end_matches(".scope");
+    let out_fd = journal_stream(journal_id, 6)?;
+    let err_fd = journal_stream(journal_id, 3)?;
+    dup2(out_fd, 1).context("dup2 stdout to journal")?;
+    dup2(err_fd, 2).context("dup2 stderr to journal")?;
+    // close originals; 1 and 2 still reference the journal streams
+    nix::unistd::close(out_fd).ok();
+    nix::unistd::close(err_fd).ok();
 
     Err(Command::new(SYSTEMD_RUN)
         .args([
