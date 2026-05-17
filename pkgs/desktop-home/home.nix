@@ -63,6 +63,7 @@ in
     sd
     lurk
     samply
+    isd
     # opencode
     gnome-themes-extra # dark theme
     nautilus
