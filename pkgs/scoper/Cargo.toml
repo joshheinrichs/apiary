@@ -6,6 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-nix = { version = "0.29", features = ["fs"] }
+nix = { version = "0.29", features = ["fs", "socket"] }
 procfs = "0.17"
 xdg = "2"

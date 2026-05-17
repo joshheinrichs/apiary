@@ -6,6 +6,7 @@ use std::process::{self, Command};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use nix::sys::socket::{shutdown, Shutdown};
 use nix::unistd::dup2;
 use procfs::process::Process;
 
@@ -195,9 +196,10 @@ fn main() -> Result<()> {
     let err_fd = journal_stream(journal_id, 3)?;
     dup2(out_fd, 1).context("dup2 stdout to journal")?;
     dup2(err_fd, 2).context("dup2 stderr to journal")?;
-    // close originals; 1 and 2 still reference the journal streams
     nix::unistd::close(out_fd).ok();
     nix::unistd::close(err_fd).ok();
+    shutdown(1, Shutdown::Read).context("shutdown stdout read")?;
+    shutdown(2, Shutdown::Read).context("shutdown stderr read")?;
 
     Err(Command::new(SYSTEMD_RUN)
         .args([
