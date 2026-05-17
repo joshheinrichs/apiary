@@ -98,6 +98,7 @@ in
     #   org.gradle.daemon.idletimeout=3600000
     # '';
 
+    ".nix-profile".source = config.home.path;
   };
 
   home.language.base = "en_CA.UTF-8";

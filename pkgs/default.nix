@@ -22,6 +22,6 @@ rec {
   steam = import ./steam { inherit pkgs; };
   desktop-home = import ./desktop-home { inherit pkgs home-manager apiary; };
   desktop-home-applicator = pkgs.writeShellScriptBin "desktop-home-applicator" ''
-    exec ${home-applicator}/bin/home-applicator ${desktop-home}/home-files ${desktop-home}/home-path
+    exec ${home-applicator}/bin/home-applicator ${desktop-home}
   '';
 }

@@ -11,7 +11,5 @@ let
   };
 in
 pkgs.runCommand "desktop-home" { } ''
-  mkdir $out
-  ln -s ${hm.activationPackage}/home-files $out/home-files
-  ln -s ${hm.config.home.path} $out/home-path
+  ln -s ${hm.activationPackage}/home-files $out
 ''

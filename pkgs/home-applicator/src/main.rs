@@ -143,26 +143,12 @@ fn reconcile_systemd(old_home_files: Option<&Path>, new_home_files: &Path) -> Re
     Ok(())
 }
 
-fn update_profile(home_path: &Path) -> Result<()> {
-    let home_path = home_path
-        .canonicalize()
-        .with_context(|| format!("resolving {}", home_path.display()))?;
-    eprintln!("updating profile to {}", home_path.display());
-    let profile = home_dir().join(".nix-profile");
-    if profile.symlink_metadata().is_ok() {
-        fs::remove_file(&profile).context("removing ~/.nix-profile")?;
-    }
-    symlink(&home_path, &profile).context("symlinking ~/.nix-profile")?;
-    Ok(())
-}
-
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let new_home_files = PathBuf::from(
         args.next()
             .context("usage: home-applicator <home-files-path> [home-path]")?,
     );
-    let new_home_path = args.next().map(PathBuf::from);
 
     let new_home_files = new_home_files
         .canonicalize()
@@ -183,10 +169,6 @@ fn main() -> Result<()> {
     create_new_symlinks(&new_home_files)?;
 
     reconcile_systemd(old_home_files.as_deref(), &new_home_files)?;
-
-    if let Some(ref home_path) = new_home_path {
-        update_profile(home_path)?;
-    }
 
     if let Some(parent) = state.parent() {
         fs::create_dir_all(parent)?;
