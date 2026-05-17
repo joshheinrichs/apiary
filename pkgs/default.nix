@@ -12,7 +12,6 @@ rec {
   bubbled-discord = import ./bubbled-discord { inherit pkgs bubblewand; };
   bubbled-syncthing = import ./bubbled-syncthing { inherit pkgs bubblewand; };
   scoper = import ./scoper { inherit pkgs; };
-  blog = import ./blog { inherit pkgs; };
   desktop-system-applicator = import ./desktop-system-applicator {
     inherit pkgs nix-cachyos-kernel;
   };
