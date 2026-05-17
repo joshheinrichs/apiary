@@ -69,7 +69,6 @@ in
     pavucontrol
     shotman
     wl-clipboard
-    # apiary.bubbled-xdg-open
     pavucontrol
     landrun
     bubblewrap

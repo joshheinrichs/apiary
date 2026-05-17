@@ -10,7 +10,6 @@ rec {
   bubblewand = import ./bubblewand { inherit pkgs; };
   bubbled-spotify = import ./bubbled-spotify { inherit pkgs bubblewand; };
   bubbled-discord = import ./bubbled-discord { inherit pkgs bubblewand; };
-  bubbled-xdg-open = import ./bubbled-xdg-open { inherit pkgs bubblewand; };
   bubbled-syncthing = import ./bubbled-syncthing { inherit pkgs bubblewand; };
   scoper = import ./scoper { inherit pkgs; };
   blog = import ./blog { inherit pkgs; };
