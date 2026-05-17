@@ -329,11 +329,20 @@ in
   programs.firefox = {
     enable = true;
     configPath = "${config.xdg.configHome}/mozilla/firefox";
+    policies.ExtensionSettings = {
+      "uBlock0@raymondhill.net" = {
+        install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
+        installation_mode = "force_installed";
+      };
+      "sponsorBlocker@ajay.app" = {
+        install_url = "https://addons.mozilla.org/firefox/downloads/latest/sponsorblock/latest.xpi";
+        installation_mode = "force_installed";
+      };
+    };
     profiles.default.settings = {
       "widget.content.allow-gtk-dark-theme" = true;
       "ui.systemUsesDarkTheme" = 2;
     };
-    # TODO: extensions
   };
   programs.zed-editor = {
     enable = true;
