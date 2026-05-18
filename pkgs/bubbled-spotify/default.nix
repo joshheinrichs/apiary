@@ -11,7 +11,7 @@ pkgs.runCommand "bubbled-spotify"
   ''
     bubblewand-generator \
       --gui \
-      --network \
+      --pasta \
       --dbus-own=org.mpris.MediaPlayer2.spotify \
       --dbus-talk=org.freedesktop.DBus \
       '--dbus-talk=org.freedesktop.portal.*' \

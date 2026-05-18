@@ -18,7 +18,7 @@ pkgs.runCommand "bubbled-discord"
       --gui \
       --gpu \
       --wayland \
-      --network \
+      --pasta \
       --camera \
       --new-session \
       --dbus-talk=org.freedesktop.DBus \

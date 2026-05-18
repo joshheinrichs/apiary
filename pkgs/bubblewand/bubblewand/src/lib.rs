@@ -253,8 +253,11 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         .map(|p: &PathBuf| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| format!("/run/user/{}", uid));
 
-    let passwd_fd = write_pipe(format!("root:x:0:0::/root:/bin/sh\n{}:x:{}:{}::{}:/bin/sh\n", username, uid, gid, home));
-    let group_fd  = write_pipe(format!("root:x:0:\n{}:x:{}:\n", groupname, gid));
+    // bwrap's default uid map makes the sandbox process appear as uid 0.
+    // Map uid 0 in passwd/group to the real username so getpwuid(0) returns
+    // the correct name and home directory.
+    let passwd_fd = write_pipe(format!("{}:x:0:0::{}:/bin/sh\n", username, home));
+    let group_fd  = write_pipe(format!("{}:x:0:{}\n", groupname, username));
 
     let dbus = if args.need_dbus() {
         match spawn_dbus_proxy(args, &xdg_runtime) {
@@ -324,9 +327,36 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
 
     if args.need_network_files() {
-        for path in ["/etc/hosts", "/etc/nsswitch.conf", "/etc/resolv.conf", "/etc/ssl"] {
+        for path in ["/etc/hosts", "/etc/nsswitch.conf"] {
             if Path::new(path).exists() {
                 cmd.ro_bind(path, path);
+            }
+        }
+
+        if Path::new("/etc/resolv.conf").exists() {
+            cmd.ro_bind("/etc/resolv.conf", "/etc/resolv.conf");
+        }
+
+        // SSL certs: bind /etc/ssl, then also bind the intermediate and final
+        // symlink targets so the NixOS chain resolves inside the sandbox.
+        // On NixOS: /etc/ssl/certs/ca-*.crt → /etc/static/ssl/… → /nix/store/…
+        // bwrap resolves symlinks on the source side, so --ro-bind-try on each
+        // hop makes the full chain accessible at its expected path.
+        cmd.ro_bind_try("/etc/ssl", "/etc/ssl");
+        if Path::new("/etc/static/ssl").exists() {
+            cmd.ro_bind_try("/etc/static/ssl", "/etc/static/ssl");
+        }
+        for cert in ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/ca-bundle.crt"] {
+            if let Ok(real) = fs::canonicalize(cert) {
+                cmd.ro_bind_try(&real, &real);
+            }
+        }
+        for var in ["NIX_SSL_CERT_FILE", "SSL_CERT_FILE", "SSL_CERT_DIR"] {
+            if let Ok(val) = env::var(var) {
+                if let Ok(real) = fs::canonicalize(&val) {
+                    cmd.ro_bind_try(&real, &real);
+                }
+                cmd.setenv(var, &val);
             }
         }
     }
@@ -609,10 +639,10 @@ pub struct PastaOrchestrator {
 fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator> {
     let mut info = [0i32; 2];
     let mut block = [0i32; 2];
-    if unsafe { libc::pipe(info.as_mut_ptr()) } != 0 {
+    if unsafe { libc::pipe2(info.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
         return Err(io::Error::last_os_error());
     }
-    if unsafe { libc::pipe(block.as_mut_ptr()) } != 0 {
+    if unsafe { libc::pipe2(block.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
         return Err(io::Error::last_os_error());
     }
     let (info_r, info_w) = (info[0], info[1]);
@@ -728,8 +758,7 @@ fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]
         return 1;
     }
 
-    // Pasta is up and daemonized; unblock bwrap. The daemon will exit on its
-    // own when the netns is destroyed.
+    // Pasta is up and daemonized; unblock bwrap.
     let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
     unsafe { libc::close(block_fd) };
     0
