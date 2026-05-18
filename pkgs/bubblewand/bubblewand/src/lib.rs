@@ -13,6 +13,11 @@ const BWRAP: &str = match option_env!("BWRAP") { Some(s) => s, None => "bwrap" }
 const XDG_DBUS_PROXY: &str = match option_env!("XDG_DBUS_PROXY") { Some(s) => s, None => "xdg-dbus-proxy" };
 const PASTA: &str = match option_env!("PASTA") { Some(s) => s, None => "pasta" };
 const XWAYLAND_SATELLITE: &str = match option_env!("XWAYLAND_SATELLITE") { Some(s) => s, None => "xwayland-satellite" };
+const PIPEWIRE: &str = match option_env!("PIPEWIRE") { Some(s) => s, None => "pipewire" };
+const WIREPLUMBER: &str = match option_env!("WIREPLUMBER") { Some(s) => s, None => "wireplumber" };
+const WIREPLUMBER_SHARE: &str = match option_env!("WIREPLUMBER_SHARE") { Some(s) => s, None => "" };
+const PIPEWIRE_SANDBOX_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CONF") { Some(s) => s, None => "pipewire-sandbox.conf" };
+const PIPEWIRE_SANDBOX_CAPTURE_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CAPTURE_CONF") { Some(s) => s, None => "pipewire-sandbox-capture.conf" };
 
 // ---------------------------------------------------------------------------
 // CLI flags shared by both binaries
@@ -24,9 +29,13 @@ pub struct SandboxArgs {
     #[arg(long)]
     pub gui: bool,
 
-    /// Enable audio (pulse + pipewire)
+    /// Playback-only audio via restricted PipeWire proxy (implied by --gui)
     #[arg(long)]
     pub audio: bool,
+
+    /// Add microphone access on top of --audio (implies --audio)
+    #[arg(long)]
+    pub audio_capture: bool,
 
     #[arg(long)]
     pub network: bool,
@@ -116,7 +125,7 @@ impl Default for SandboxArgs {
     fn default() -> Self {
         Self {
             hostname: "bubble".into(),
-            gui: false, audio: false, network: false, gpu: false,
+            gui: false, audio: false, audio_capture: false, network: false, gpu: false,
             wayland: false, pulse: false, pipewire: false, camera: false,
             pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
             pasta_mac: None,
@@ -131,8 +140,8 @@ impl Default for SandboxArgs {
 
 impl SandboxArgs {
     pub fn need_wayland(&self) -> bool { self.wayland || self.gui }
-    pub fn need_pulse(&self) -> bool   { self.pulse || self.audio || self.gui }
-    pub fn need_pipewire(&self) -> bool { self.pipewire || self.audio || self.gui }
+    pub fn need_pulse(&self) -> bool   { self.pulse || self.audio || self.audio_capture || self.gui }
+    pub fn need_pipewire(&self) -> bool { self.pipewire || self.audio || self.audio_capture || self.gui }
     pub fn need_dbus(&self) -> bool    { !self.dbus_talk.is_empty() || !self.dbus_own.is_empty() }
     pub fn need_network_files(&self) -> bool { self.network || self.pasta }
 
@@ -156,9 +165,10 @@ impl SandboxArgs {
             };
         }
 
-        flag!(self.gui,         "--gui");
-        flag!(self.audio,       "--audio");
-        flag!(self.network,     "--network");
+        flag!(self.gui,           "--gui");
+        flag!(self.audio,         "--audio");
+        flag!(self.audio_capture, "--audio-capture");
+        flag!(self.network,       "--network");
         flag!(self.pasta,       "--pasta");
         flag!(self.gpu,         "--gpu");
         flag!(self.wayland,     "--wayland");
@@ -307,6 +317,15 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
             return io::Error::new(io::ErrorKind::TimedOut, "xwayland-satellite: socket did not appear");
         }
         Some((child, n))
+    } else {
+        None
+    };
+
+    let pipewire_proxy = if args.need_pipewire() && !args.pipewire {
+        match spawn_pipewire_proxy(&xdg_runtime, args.audio_capture) {
+            Ok(p) => Some(p),
+            Err(e) => return io::Error::new(e.kind(), format!("pipewire proxy: {}", e)),
+        }
     } else {
         None
     };
@@ -468,11 +487,16 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
 
     // PipeWire
     if args.need_pipewire() {
-        if Path::new("/run/pipewire").exists() {
-            cmd.bind_try("/run/pipewire", "/run/pipewire");
+        if let Some(ref proxy) = pipewire_proxy {
+            let dest = format!("{}/pipewire-0", xdg_runtime);
+            cmd.bind_try(&proxy.socket, &dest);
+        } else {
+            if Path::new("/run/pipewire").exists() {
+                cmd.bind_try("/run/pipewire", "/run/pipewire");
+            }
+            let pw_sock = format!("{}/pipewire-0", xdg_runtime);
+            cmd.bind_try(&pw_sock, &pw_sock);
         }
-        let pw_sock = format!("{}/pipewire-0", xdg_runtime);
-        cmd.bind_try(&pw_sock, &pw_sock);
     }
 
     // GUI extras: fonts, dconf, cursors, XDG_DATA_DIRS
@@ -561,8 +585,19 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
 
     let bwrap_bin = args.bwrap.as_deref().unwrap_or(BWRAP);
-    if let Some((mut xw_child, _)) = xwayland_satellite {
-        // Fork so we can reap xwayland-satellite after bwrap exits.
+    let mut cleanup: Vec<std::process::Child> = Vec::new();
+    if let Some(proxy) = pipewire_proxy {
+        cleanup.push(proxy.pw_child);
+        cleanup.push(proxy.wp_child);
+    }
+    if let Some((xw_child, _)) = xwayland_satellite {
+        cleanup.push(xw_child);
+    }
+
+    if cleanup.is_empty() {
+        use std::os::unix::process::CommandExt;
+        Command::new(bwrap_bin).args(cmd.exec(exe, exe_args)).exec()
+    } else {
         let bwrap_args = cmd.exec(exe, exe_args);
         let bwrap_pid = unsafe { libc::fork() };
         if bwrap_pid < 0 {
@@ -575,17 +610,13 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         }
         let mut status = 0i32;
         unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
-        xw_child.kill().ok();
-        xw_child.wait().ok();
+        for mut child in cleanup { child.kill().ok(); child.wait().ok(); }
         let code = if unsafe { libc::WIFEXITED(status) } {
             unsafe { libc::WEXITSTATUS(status) }
         } else {
             1
         };
         std::process::exit(code);
-    } else {
-        use std::os::unix::process::CommandExt;
-        Command::new(bwrap_bin).args(cmd.exec(exe, exe_args)).exec()
     }
 }
 
@@ -673,6 +704,52 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
     }
 
     Ok(DbusProxy { socket, lifetime_fd: parent_fd, _child: child })
+}
+
+// ---------------------------------------------------------------------------
+// PipeWire proxy
+// ---------------------------------------------------------------------------
+
+struct PipewireProxy {
+    socket: String,
+    pw_child: std::process::Child,
+    wp_child: std::process::Child,
+}
+
+fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<PipewireProxy> {
+    let name = format!("bubblewand-pw-{}", unsafe { libc::getpid() });
+    let socket = format!("{}/{}", xdg_runtime, name);
+    let conf = if capture { PIPEWIRE_SANDBOX_CAPTURE_CONF } else { PIPEWIRE_SANDBOX_CONF };
+
+    let pulse_server = format!("unix:{}/pulse/native", xdg_runtime);
+    let pw_child = Command::new(PIPEWIRE)
+        .arg("-c").arg(conf)
+        .env("PIPEWIRE_CORE", &name)
+        .env("XDG_RUNTIME_DIR", xdg_runtime)
+        .env("PULSE_SERVER", &pulse_server)
+        .spawn()
+        .map_err(|e| io::Error::new(e.kind(), format!("pipewire: {}", e)))?;
+
+    let mut ready = false;
+    for _ in 0..50 {
+        if Path::new(&socket).exists() { ready = true; break; }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    if !ready {
+        return Err(io::Error::new(io::ErrorKind::TimedOut, "pipewire proxy: socket did not appear"));
+    }
+
+    let mut wp = Command::new(WIREPLUMBER);
+    wp.arg("--profile").arg("policy")
+      .env("PIPEWIRE_REMOTE", &name)
+      .env("XDG_RUNTIME_DIR", xdg_runtime);
+    if !WIREPLUMBER_SHARE.is_empty() {
+        wp.env("XDG_DATA_DIRS", WIREPLUMBER_SHARE);
+    }
+    let wp_child = wp.spawn()
+        .map_err(|e| io::Error::new(e.kind(), format!("wireplumber: {}", e)))?;
+
+    Ok(PipewireProxy { socket, pw_child, wp_child })
 }
 
 // ---------------------------------------------------------------------------
@@ -896,7 +973,11 @@ mod tests {
     #[test]
     fn need_pipewire_via_audio() { assert!(sa(|a| a.audio = true).need_pipewire()); }
     #[test]
+    fn need_pipewire_via_audio_capture() { assert!(sa(|a| a.audio_capture = true).need_pipewire()); }
+    #[test]
     fn need_pipewire_via_gui() { assert!(sa(|a| a.gui = true).need_pipewire()); }
+    #[test]
+    fn need_pulse_via_audio_capture() { assert!(sa(|a| a.audio_capture = true).need_pulse()); }
 
     #[test]
     fn need_dbus_talk() { assert!(sa(|a| a.dbus_talk.push("org.foo".into())).need_dbus()); }
@@ -957,6 +1038,12 @@ mod tests {
     fn cli_args_xwayland() {
         let out = sa(|a| a.xwayland = true).to_cli_args();
         assert!(out.contains(&"--xwayland".into()));
+    }
+
+    #[test]
+    fn cli_args_audio_capture() {
+        let out = sa(|a| a.audio_capture = true).to_cli_args();
+        assert!(out.contains(&"--audio-capture".into()));
     }
 
     #[test]

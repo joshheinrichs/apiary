@@ -22,6 +22,11 @@ let
       XDG_DBUS_PROXY = "${pkgs.xdg-dbus-proxy}/bin/xdg-dbus-proxy";
       PASTA = "${pkgs.passt}/bin/pasta";
       XWAYLAND_SATELLITE = "${pkgs.xwayland-satellite}/bin/xwayland-satellite";
+      PIPEWIRE = "${pkgs.pipewire}/bin/pipewire";
+      WIREPLUMBER = "${pkgs.wireplumber}/bin/wireplumber";
+      WIREPLUMBER_SHARE = "${pkgs.wireplumber}/share";
+      PIPEWIRE_SANDBOX_CONF = "${./pipewire-sandbox.conf}";
+      PIPEWIRE_SANDBOX_CAPTURE_CONF = "${./pipewire-sandbox-capture.conf}";
     }
   );
 in

@@ -22,6 +22,7 @@ pkgs.runCommand "bubbled-discord"
       --pasta-mac=02:00:00:00:00:00 \
       --xwayland \
       --camera \
+      --audio-capture \
       --new-session \
       --dbus-talk=org.freedesktop.DBus \
       '--dbus-talk=org.freedesktop.portal.*' \
