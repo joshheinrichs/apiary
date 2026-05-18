@@ -12,6 +12,7 @@ use clap::Args;
 const BWRAP: &str = match option_env!("BWRAP") { Some(s) => s, None => "bwrap" };
 const XDG_DBUS_PROXY: &str = match option_env!("XDG_DBUS_PROXY") { Some(s) => s, None => "xdg-dbus-proxy" };
 const PASTA: &str = match option_env!("PASTA") { Some(s) => s, None => "pasta" };
+const XWAYLAND_SATELLITE: &str = match option_env!("XWAYLAND_SATELLITE") { Some(s) => s, None => "xwayland-satellite" };
 
 // ---------------------------------------------------------------------------
 // CLI flags shared by both binaries
@@ -98,6 +99,10 @@ pub struct SandboxArgs {
     #[arg(long = "new-session")]
     pub new_session: bool,
 
+    /// Spawn a per-app xwayland-satellite instance and forward the X11 socket into the sandbox
+    #[arg(long)]
+    pub xwayland: bool,
+
     /// Inherit the host environment instead of starting with a clean slate
     #[arg(long = "keep-env")]
     pub keep_env: bool,
@@ -115,7 +120,7 @@ impl Default for SandboxArgs {
             wayland: false, pulse: false, pipewire: false, camera: false,
             pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
             pasta_mac: None,
-            new_session: false, keep_env: false,
+            new_session: false, keep_env: false, xwayland: false,
             dbus_talk: Vec::new(), dbus_own: Vec::new(),
             persist_home: None, share_tmp: None, set_env: Vec::new(), fwd_env: Vec::new(),
             ro_bind: Vec::new(), rw_bind: Vec::new(), tmpfs: Vec::new(),
@@ -161,6 +166,7 @@ impl SandboxArgs {
         flag!(self.pipewire,    "--pipewire");
         flag!(self.camera,      "--camera");
         flag!(self.new_session, "--new-session");
+        flag!(self.xwayland,    "--xwayland");
         flag!(self.keep_env,    "--keep-env");
 
         out.push(format!("--hostname={}", self.hostname));
@@ -285,6 +291,26 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         None
     };
 
+    let xwayland_satellite = if args.xwayland {
+        let n = unsafe { libc::getpid() } as u32;
+        let child = match Command::new(XWAYLAND_SATELLITE).arg(format!(":{}", n)).spawn() {
+            Ok(c) => c,
+            Err(e) => return io::Error::new(e.kind(), format!("xwayland-satellite: {}", e)),
+        };
+        let sock = format!("/tmp/.X11-unix/X{}", n);
+        let mut ready = false;
+        for _ in 0..50 {
+            if Path::new(&sock).exists() { ready = true; break; }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if !ready {
+            return io::Error::new(io::ErrorKind::TimedOut, "xwayland-satellite: socket did not appear");
+        }
+        Some((child, n))
+    } else {
+        None
+    };
+
     let mut cmd = BwrapArgs::new();
 
     // Base filesystem
@@ -296,6 +322,11 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         cmd.bind(scoped, "/tmp");
     } else {
         cmd.tmpfs("/tmp");
+    }
+    if let Some((_, n)) = &xwayland_satellite {
+        let host_sock = format!("/tmp/.X11-unix/X{}", n);
+        cmd.dir("/tmp/.X11-unix");
+        cmd.bind(&host_sock, "/tmp/.X11-unix/X0");
     }
 
     // Home: persistent or ephemeral
@@ -418,6 +449,11 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         }
     }
 
+    // Xwayland (per-app xwayland-satellite)
+    if xwayland_satellite.is_some() {
+        cmd.setenv("DISPLAY", ":0");
+    }
+
     // PulseAudio
     if args.need_pulse() {
         if Path::new("/run/pulse").exists() {
@@ -524,10 +560,33 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         cmd.new_session();
     }
 
-    // Exec bwrap — replaces this process
     let bwrap_bin = args.bwrap.as_deref().unwrap_or(BWRAP);
-    use std::os::unix::process::CommandExt;
-    Command::new(bwrap_bin).args(cmd.exec(exe, exe_args)).exec()
+    if let Some((mut xw_child, _)) = xwayland_satellite {
+        // Fork so we can reap xwayland-satellite after bwrap exits.
+        let bwrap_args = cmd.exec(exe, exe_args);
+        let bwrap_pid = unsafe { libc::fork() };
+        if bwrap_pid < 0 {
+            return io::Error::last_os_error();
+        }
+        if bwrap_pid == 0 {
+            use std::os::unix::process::CommandExt;
+            let _ = Command::new(bwrap_bin).args(&bwrap_args).exec();
+            unsafe { libc::_exit(1) };
+        }
+        let mut status = 0i32;
+        unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
+        xw_child.kill().ok();
+        xw_child.wait().ok();
+        let code = if unsafe { libc::WIFEXITED(status) } {
+            unsafe { libc::WEXITSTATUS(status) }
+        } else {
+            1
+        };
+        std::process::exit(code);
+    } else {
+        use std::os::unix::process::CommandExt;
+        Command::new(bwrap_bin).args(cmd.exec(exe, exe_args)).exec()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -892,6 +951,12 @@ mod tests {
     fn cli_args_ro_bind() {
         let out = sa(|a| a.ro_bind.push("/src:/dst".into())).to_cli_args();
         assert!(out.contains(&"--ro-bind=/src:/dst".into()));
+    }
+
+    #[test]
+    fn cli_args_xwayland() {
+        let out = sa(|a| a.xwayland = true).to_cli_args();
+        assert!(out.contains(&"--xwayland".into()));
     }
 
     #[test]

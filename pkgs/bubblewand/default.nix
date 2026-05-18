@@ -21,6 +21,7 @@ let
       BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
       XDG_DBUS_PROXY = "${pkgs.xdg-dbus-proxy}/bin/xdg-dbus-proxy";
       PASTA = "${pkgs.passt}/bin/pasta";
+      XWAYLAND_SATELLITE = "${pkgs.xwayland-satellite}/bin/xwayland-satellite";
     }
   );
 in

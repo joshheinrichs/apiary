@@ -19,13 +19,14 @@ pkgs.runCommand "bubbled-discord"
       --gpu \
       --wayland \
       --pasta \
+      --pasta-mac=02:00:00:00:00:00 \
+      --xwayland \
       --camera \
       --new-session \
       --dbus-talk=org.freedesktop.DBus \
       '--dbus-talk=org.freedesktop.portal.*' \
       --set-env=NIXOS_XDG_OPEN_USE_PORTAL=1 \
       --set-env=NIXOS_OZONE_WL=1 \
-      --set-env=DISPLAY=:0 \
       --persist-home=discord \
       --share-tmp=discord \
       "--set-env=PATH=${pkgs.coreutils}/bin:${pkgs.xdg-utils}/bin" \
