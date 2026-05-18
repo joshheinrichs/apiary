@@ -453,10 +453,9 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         let dest = format!("{}/bus", xdg_runtime);
         cmd.ro_bind(&d.socket, &dest);
         cmd.setenv("DBUS_SESSION_BUS_ADDRESS", &format!("unix:path={}", dest));
-        // Keep write_fd open in bwrap so proxy exits when bwrap does
         unsafe {
-            let flags = libc::fcntl(d.write_fd, libc::F_GETFD);
-            libc::fcntl(d.write_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            let flags = libc::fcntl(d.lifetime_fd, libc::F_GETFD);
+            libc::fcntl(d.lifetime_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
         }
     }
 
@@ -516,7 +515,7 @@ fn write_pipe(content: impl AsRef<[u8]>) -> Option<i32> {
 
 pub struct DbusProxy {
     pub socket: String,
-    pub write_fd: i32,
+    pub lifetime_fd: i32,
     _child: std::process::Child,
 }
 
@@ -527,14 +526,14 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
         io::Error::new(io::ErrorKind::NotFound, "DBUS_SESSION_BUS_ADDRESS not set")
     })?;
 
-    // socketpair: proxy gets fds[0] and writes a zero byte to it when ready;
-    // parent reads that byte from fds[1], then keeps fds[1] open across exec
-    // so the proxy can detect bwrap's exit via POLLHUP on its end.
+    // Proxy writes a ready byte to the write end; parent keeps the read end
+    // open in bwrap. When bwrap exits, POLLHUP fires on the proxy's write end
+    // (G_IO_HUP in GLib) and the proxy exits.
     let mut fds = [0i32; 2];
-    if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) } != 0 {
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
         return Err(io::Error::last_os_error());
     }
-    let (proxy_fd, parent_fd) = (fds[0], fds[1]);
+    let (parent_fd, proxy_fd) = (fds[0], fds[1]);
 
     let socket = format!("{}/bubblewand-dbus.sock", xdg_runtime);
 
@@ -564,8 +563,7 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
     // Close proxy_fd in the parent — only the proxy needs it
     unsafe { libc::close(proxy_fd) };
 
-    // Block until the proxy signals readiness (writes a zero byte to proxy_fd,
-    // which we read from parent_fd). 5s timeout covers slow startup.
+    // Block until the proxy signals readiness. 5s timeout covers slow startup.
     let mut pfd = libc::pollfd { fd: parent_fd, events: libc::POLLIN | libc::POLLHUP, revents: 0 };
     let ret = unsafe { libc::poll(&mut pfd, 1, 5000) };
     let mut buf = [0u8; 1];
@@ -579,7 +577,7 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
         return Err(io::Error::new(io::ErrorKind::TimedOut, "dbus proxy did not become ready"));
     }
 
-    Ok(DbusProxy { socket, write_fd: parent_fd, _child: child })
+    Ok(DbusProxy { socket, lifetime_fd: parent_fd, _child: child })
 }
 
 // ---------------------------------------------------------------------------
