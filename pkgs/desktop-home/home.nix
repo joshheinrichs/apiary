@@ -44,6 +44,8 @@ in
     qbittorrent
     vlc
     obs-studio
+    apiary.bubblewand.runtime
+    apiary.bubblewand.generator
     apiary.bubbled-spotify
     apiary.bubbled-discord
     ripgrep

@@ -42,6 +42,10 @@ pub struct SandboxArgs {
     #[arg(long = "pasta-udp", value_name = "SPEC")]
     pub pasta_udp: Vec<String>,
 
+    /// MAC address for the pasta TAP interface (e.g. for stable device fingerprinting)
+    #[arg(long = "pasta-mac", value_name = "ADDR")]
+    pub pasta_mac: Option<String>,
+
     #[arg(long)]
     pub gpu: bool,
 
@@ -110,6 +114,7 @@ impl Default for SandboxArgs {
             gui: false, audio: false, network: false, gpu: false,
             wayland: false, pulse: false, pipewire: false, camera: false,
             pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
+            pasta_mac: None,
             new_session: false, keep_env: false,
             dbus_talk: Vec::new(), dbus_own: Vec::new(),
             persist_home: None, share_tmp: None, set_env: Vec::new(), fwd_env: Vec::new(),
@@ -166,6 +171,7 @@ impl SandboxArgs {
         multi!(self.dbus_own,  "--dbus-own");
         multi!(self.pasta_tcp, "--pasta-tcp");
         multi!(self.pasta_udp, "--pasta-udp");
+        opt!(self.pasta_mac,         "--pasta-mac");
         multi!(self.set_env,   "--set-env");
         multi!(self.fwd_env,   "--fwd-env");
         multi!(self.ro_bind,   "--ro-bind");
@@ -650,6 +656,7 @@ fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator>
 
     let tcp = args.pasta_tcp.clone();
     let udp = args.pasta_udp.clone();
+    let mac = args.pasta_mac.clone();
 
     let pid = unsafe { libc::fork() };
     if pid < 0 {
@@ -661,7 +668,7 @@ fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator>
             libc::close(info_w);
             libc::close(block_r);
         }
-        let code = orchestrator_main(info_r, block_w, &tcp, &udp);
+        let code = orchestrator_main(info_r, block_w, &tcp, &udp, mac.as_deref());
         unsafe { libc::_exit(code) };
     }
 
@@ -681,7 +688,7 @@ fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator>
     Ok(PastaOrchestrator { info_fd: info_w, block_fd: block_r, _child_pid: pid })
 }
 
-fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]) -> i32 {
+fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String], mac: Option<&str>) -> i32 {
     // Read bwrap's --info-fd JSON until we can extract child-pid.
     let mut buf = Vec::with_capacity(1024);
     let mut tmp = [0u8; 1024];
@@ -731,6 +738,9 @@ fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]
         .arg("-U").arg("none")
         .arg("--userns").arg(&userns)
         .arg("--netns").arg(&netns);
+    if let Some(ref mac) = mac {
+        cmd.arg("--ns-mac-addr").arg(mac);
+    }
     for spec in tcp {
         cmd.arg("-t").arg(spec);
     }

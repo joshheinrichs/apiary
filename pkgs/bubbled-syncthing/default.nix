@@ -11,7 +11,7 @@ pkgs.lib.makeOverridable (
       nativeBuildInputs = [ bubblewand.generator ];
     }
     ''
-      bubblewand-generator \
+      bubblewand-generator install \
         --persist-home=syncthing \
         --pasta \
         --bin=syncthing \

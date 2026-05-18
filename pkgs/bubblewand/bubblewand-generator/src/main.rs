@@ -1,17 +1,29 @@
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs as unix_fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use bubblewand::SandboxArgs;
 
 #[derive(Parser)]
-#[command(
-    name = "bubblewand-generator",
-    about = "Wrap a package's binaries and desktop entries in a bubblewand sandbox"
-)]
+#[command(name = "bubblewand-generator")]
 struct Cli {
+    #[command(subcommand)]
+    command: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Generate sandbox wrappers for a package's binaries and desktop entries
+    Install(InstallArgs),
+    /// Run a binary directly inside a sandbox (for debugging)
+    Exec(ExecArgs),
+}
+
+#[derive(Args)]
+struct InstallArgs {
     #[command(flatten)]
     sandbox: SandboxArgs,
 
@@ -30,20 +42,72 @@ struct Cli {
     output: PathBuf,
 }
 
+#[derive(Args)]
+struct ExecArgs {
+    #[command(flatten)]
+    sandbox: SandboxArgs,
+
+    /// File of paths (one per line) to ro-bind into the sandbox
+    #[arg(long = "ro-bind-file", value_name = "FILE")]
+    ro_bind_file: Option<PathBuf>,
+
+    /// Executable to run inside the sandbox
+    exe: PathBuf,
+
+    /// Arguments to pass to the executable
+    #[arg(last = true)]
+    args: Vec<OsString>,
+}
+
 fn main() {
     let cli = Cli::parse();
-    if let Err(e) = run(&cli) {
-        eprintln!("bubblewand-generator: {}", e);
-        std::process::exit(1);
+    match cli.command {
+        Cmd::Install(args) => {
+            if let Err(e) = run_install(&args) {
+                eprintln!("bubblewand-generator install: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Cmd::Exec(args) => {
+            let err = run_exec(args);
+            eprintln!("bubblewand-generator exec: {}", err);
+            std::process::exit(1);
+        }
     }
 }
 
-fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+fn run_exec(args: ExecArgs) -> std::io::Error {
+    const BUBBLEWAND: &str = match option_env!("BUBBLEWAND") { Some(s) => s, None => "bubblewand" };
+
+    let mut flags = args.sandbox.to_cli_args();
+    if let Some(ref path_file) = args.ro_bind_file {
+        let content = match fs::read_to_string(path_file) {
+            Ok(c) => c,
+            Err(e) => return e,
+        };
+        for line in content.lines() {
+            let p = line.trim();
+            if !p.is_empty() {
+                flags.push(format!("--ro-bind={}:{}", p, p));
+            }
+        }
+    }
+    flags.push("--".into());
+    flags.push(args.exe.to_string_lossy().into_owned());
+    for arg in &args.args {
+        flags.push(arg.to_string_lossy().into_owned());
+    }
+
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new(BUBBLEWAND).args(&flags).exec()
+}
+
+fn run_install(args: &InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
     const BUBBLEWAND: &str = match option_env!("BUBBLEWAND") { Some(s) => s, None => "bubblewand" };
     let bubblewand_bin = PathBuf::from(BUBBLEWAND);
-    let mut flags = cli.sandbox.to_cli_args();
+    let mut flags = args.sandbox.to_cli_args();
 
-    if let Some(ref path_file) = cli.ro_bind_file {
+    if let Some(ref path_file) = args.ro_bind_file {
         for line in fs::read_to_string(path_file)?.lines() {
             let p = line.trim();
             if !p.is_empty() {
@@ -53,9 +117,9 @@ fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 1. Wrap executables
-    let src_bin = cli.source.join("bin");
+    let src_bin = args.source.join("bin");
     if src_bin.is_dir() {
-        let out_bin = cli.output.join("bin");
+        let out_bin = args.output.join("bin");
         fs::create_dir_all(&out_bin)?;
 
         for entry in fs::read_dir(&src_bin)? {
@@ -67,7 +131,7 @@ fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
             if fs::metadata(&src_path)?.permissions().mode() & 0o111 == 0 {
                 continue;
             }
-            if !cli.bins.is_empty() && !cli.bins.iter().any(|b| b == name_str.as_ref()) {
+            if !args.bins.is_empty() && !args.bins.iter().any(|b| b == name_str.as_ref()) {
                 continue;
             }
 
@@ -77,12 +141,11 @@ fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 2. Patch .desktop files
-    let src_apps = cli.source.join("share").join("applications");
+    let src_apps = args.source.join("share").join("applications");
     if src_apps.is_dir() {
-        let out_apps = cli.output.join("share").join("applications");
+        let out_apps = args.output.join("share").join("applications");
         fs::create_dir_all(&out_apps)?;
 
-        // Collect bin names up front so patch_desktop is pure
         let src_bins: Vec<String> = if src_bin.is_dir() {
             fs::read_dir(&src_bin)?
                 .flatten()
@@ -99,15 +162,15 @@ fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
             let content = fs::read_to_string(&path)?;
-            let patched = patch_desktop(&content, &src_bins, &cli.output.join("bin"));
+            let patched = patch_desktop(&content, &src_bins, &args.output.join("bin"));
             fs::write(out_apps.join(entry.file_name()), patched)?;
         }
     }
 
     // 3. Symlink icons
-    let src_icons = cli.source.join("share").join("icons");
+    let src_icons = args.source.join("share").join("icons");
     if src_icons.is_dir() {
-        let out_icons = cli.output.join("share").join("icons");
+        let out_icons = args.output.join("share").join("icons");
         fs::create_dir_all(out_icons.parent().unwrap())?;
         if out_icons.symlink_metadata().is_err() {
             unix_fs::symlink(&src_icons, &out_icons)?;
@@ -280,7 +343,6 @@ mod tests {
             &["--dbus-talk=org.freedesktop.portal.*".into()],
             Path::new("/nix/store/abc/bin/app"),
         );
-        // shell-words quotes anything with shell metacharacters
         assert!(out.starts_with("#!/bin/sh\n"));
         assert!(out.contains("--dbus-talk=org.freedesktop.portal"));
         assert!(out.ends_with("-- /nix/store/abc/bin/app \"$@\"\n"));
