@@ -20,12 +20,13 @@ pkgs.runCommand "bubbled-discord"
       --wayland \
       --pasta \
       --pasta-mac=02:00:00:00:00:00 \
-      --xwayland \
+      --cage \
       --camera \
       --audio-capture \
       --new-session \
       --dbus-talk=org.freedesktop.DBus \
       '--dbus-talk=org.freedesktop.portal.*' \
+      --set-env=DISPLAY=:0 \
       --set-env=NIXOS_XDG_OPEN_USE_PORTAL=1 \
       --set-env=NIXOS_OZONE_WL=1 \
       --persist-home=discord \

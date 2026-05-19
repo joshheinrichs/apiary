@@ -12,7 +12,7 @@ use clap::Args;
 const BWRAP: &str = match option_env!("BWRAP") { Some(s) => s, None => "bwrap" };
 const XDG_DBUS_PROXY: &str = match option_env!("XDG_DBUS_PROXY") { Some(s) => s, None => "xdg-dbus-proxy" };
 const PASTA: &str = match option_env!("PASTA") { Some(s) => s, None => "pasta" };
-const XWAYLAND_SATELLITE: &str = match option_env!("XWAYLAND_SATELLITE") { Some(s) => s, None => "xwayland-satellite" };
+const CAGE: &str = match option_env!("CAGE") { Some(s) => s, None => "cage" };
 const PIPEWIRE: &str = match option_env!("PIPEWIRE") { Some(s) => s, None => "pipewire" };
 const WIREPLUMBER: &str = match option_env!("WIREPLUMBER") { Some(s) => s, None => "wireplumber" };
 const WIREPLUMBER_SHARE: &str = match option_env!("WIREPLUMBER_SHARE") { Some(s) => s, None => "" };
@@ -108,9 +108,9 @@ pub struct SandboxArgs {
     #[arg(long = "new-session")]
     pub new_session: bool,
 
-    /// Spawn a per-app xwayland-satellite instance and forward the X11 socket into the sandbox
+    /// Wrap in cage (nested Wayland compositor) for clipboard/screencopy isolation
     #[arg(long)]
-    pub xwayland: bool,
+    pub cage: bool,
 
     /// Inherit the host environment instead of starting with a clean slate
     #[arg(long = "keep-env")]
@@ -129,7 +129,7 @@ impl Default for SandboxArgs {
             wayland: false, pulse: false, pipewire: false, camera: false,
             pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
             pasta_mac: None,
-            new_session: false, keep_env: false, xwayland: false,
+            new_session: false, keep_env: false, cage: false,
             dbus_talk: Vec::new(), dbus_own: Vec::new(),
             persist_home: None, share_tmp: None, set_env: Vec::new(), fwd_env: Vec::new(),
             ro_bind: Vec::new(), rw_bind: Vec::new(), tmpfs: Vec::new(),
@@ -139,7 +139,7 @@ impl Default for SandboxArgs {
 }
 
 impl SandboxArgs {
-    pub fn need_wayland(&self) -> bool { self.wayland || self.gui }
+    pub fn need_wayland(&self) -> bool { self.wayland || self.gui || self.cage }
     pub fn need_pulse(&self) -> bool   { self.pulse || self.audio || self.audio_capture || self.gui }
     pub fn need_pipewire(&self) -> bool { self.pipewire || self.audio || self.audio_capture || self.gui }
     pub fn need_dbus(&self) -> bool    { !self.dbus_talk.is_empty() || !self.dbus_own.is_empty() }
@@ -176,7 +176,7 @@ impl SandboxArgs {
         flag!(self.pipewire,    "--pipewire");
         flag!(self.camera,      "--camera");
         flag!(self.new_session, "--new-session");
-        flag!(self.xwayland,    "--xwayland");
+        flag!(self.cage,        "--cage");
         flag!(self.keep_env,    "--keep-env");
 
         out.push(format!("--hostname={}", self.hostname));
@@ -301,31 +301,21 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         None
     };
 
-    let xwayland_satellite = if args.xwayland {
-        let n = unsafe { libc::getpid() } as u32;
-        let child = match Command::new(XWAYLAND_SATELLITE).arg(format!(":{}", n)).spawn() {
-            Ok(c) => c,
-            Err(e) => return io::Error::new(e.kind(), format!("xwayland-satellite: {}", e)),
-        };
-        let sock = format!("/tmp/.X11-unix/X{}", n);
-        let mut ready = false;
-        for _ in 0..50 {
-            if Path::new(&sock).exists() { ready = true; break; }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        if !ready {
-            return io::Error::new(io::ErrorKind::TimedOut, "xwayland-satellite: socket did not appear");
-        }
-        Some((child, n))
-    } else {
-        None
-    };
-
     let pipewire_proxy = if args.need_pipewire() && !args.pipewire {
         match spawn_pipewire_proxy(&xdg_runtime, args.audio_capture) {
             Ok(p) => Some(p),
             Err(e) => return io::Error::new(e.kind(), format!("pipewire proxy: {}", e)),
         }
+    } else {
+        None
+    };
+
+    let cage_dir = if args.cage {
+        let dir = format!("{}/bubblewand-cage-{}", xdg_runtime, unsafe { libc::getpid() });
+        if let Err(e) = fs::create_dir_all(&dir) {
+            return io::Error::new(e.kind(), format!("cage dir: {}", e));
+        }
+        Some(dir)
     } else {
         None
     };
@@ -342,12 +332,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     } else {
         cmd.tmpfs("/tmp");
     }
-    if let Some((_, n)) = &xwayland_satellite {
-        let host_sock = format!("/tmp/.X11-unix/X{}", n);
+    if cage_dir.is_some() {
         cmd.dir("/tmp/.X11-unix");
-        cmd.bind(&host_sock, "/tmp/.X11-unix/X0");
+        cmd.ro_bind_try("/tmp/.X11-unix/X0", "/tmp/.X11-unix/X0");
     }
-
     // Home: persistent or ephemeral
     if let Some(ref name) = args.persist_home {
         let xdg_bp = BaseDirectories::with_prefix("bubblewand");
@@ -457,20 +445,17 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
 
     // Wayland
     if args.need_wayland() {
-        let display = env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
-        let sock = format!("{}/{}", xdg_runtime, display);
-        if Path::new(&sock).exists() {
-            cmd.ro_bind(&sock, &sock);
-        }
+        let (sock, display) = if let Some(ref dir) = cage_dir {
+            (format!("{}/wayland-0", dir), "wayland-0".to_string())
+        } else {
+            let d = env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
+            (format!("{}/{}", xdg_runtime, d), d)
+        };
+        cmd.ro_bind_try(&sock, &format!("{}/{}", xdg_runtime, display));
         cmd.setenv("WAYLAND_DISPLAY", &display);
         if let Ok(v) = env::var("XDG_SESSION_TYPE") {
             cmd.setenv("XDG_SESSION_TYPE", &v);
         }
-    }
-
-    // Xwayland (per-app xwayland-satellite)
-    if xwayland_satellite.is_some() {
-        cmd.setenv("DISPLAY", ":0");
     }
 
     // PulseAudio
@@ -585,38 +570,52 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
 
     let bwrap_bin = args.bwrap.as_deref().unwrap_or(BWRAP);
-    let mut cleanup: Vec<std::process::Child> = Vec::new();
-    if let Some(proxy) = pipewire_proxy {
-        cleanup.push(proxy.pw_child);
-        cleanup.push(proxy.wp_child);
-    }
-    if let Some((xw_child, _)) = xwayland_satellite {
-        cleanup.push(xw_child);
-    }
+    let bwrap_args = cmd.exec(exe, exe_args);
 
-    if cleanup.is_empty() {
-        use std::os::unix::process::CommandExt;
-        Command::new(bwrap_bin).args(cmd.exec(exe, exe_args)).exec()
-    } else {
-        let bwrap_args = cmd.exec(exe, exe_args);
-        let bwrap_pid = unsafe { libc::fork() };
-        if bwrap_pid < 0 {
-            return io::Error::last_os_error();
-        }
-        if bwrap_pid == 0 {
-            use std::os::unix::process::CommandExt;
-            let _ = Command::new(bwrap_bin).args(&bwrap_args).exec();
-            unsafe { libc::_exit(1) };
-        }
-        let mut status = 0i32;
-        unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
-        for mut child in cleanup { child.kill().ok(); child.wait().ok(); }
-        let code = if unsafe { libc::WIFEXITED(status) } {
-            unsafe { libc::WEXITSTATUS(status) }
+    if let Some(ref dir) = cage_dir {
+        let host_display = env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
+        let host_socket = if host_display.starts_with('/') {
+            host_display
         } else {
-            1
+            format!("{}/{}", xdg_runtime, host_display)
         };
-        std::process::exit(code);
+        use std::os::unix::process::CommandExt;
+        Command::new(CAGE)
+            .env("XDG_RUNTIME_DIR", dir)
+            .env("WAYLAND_DISPLAY", &host_socket)
+            .arg("--")
+            .arg(bwrap_bin)
+            .args(&bwrap_args)
+            .exec()
+    } else {
+        let mut cleanup: Vec<std::process::Child> = Vec::new();
+        if let Some(proxy) = pipewire_proxy {
+            cleanup.push(proxy.pw_child);
+            cleanup.push(proxy.wp_child);
+        }
+        if cleanup.is_empty() {
+            use std::os::unix::process::CommandExt;
+            Command::new(bwrap_bin).args(bwrap_args).exec()
+        } else {
+            let bwrap_pid = unsafe { libc::fork() };
+            if bwrap_pid < 0 {
+                return io::Error::last_os_error();
+            }
+            if bwrap_pid == 0 {
+                use std::os::unix::process::CommandExt;
+                let _ = Command::new(bwrap_bin).args(&bwrap_args).exec();
+                unsafe { libc::_exit(1) };
+            }
+            let mut status = 0i32;
+            unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
+            for mut child in cleanup { child.kill().ok(); child.wait().ok(); }
+            let code = if unsafe { libc::WIFEXITED(status) } {
+                unsafe { libc::WEXITSTATUS(status) }
+            } else {
+                1
+            };
+            std::process::exit(code);
+        }
     }
 }
 
@@ -717,17 +716,19 @@ struct PipewireProxy {
 }
 
 fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<PipewireProxy> {
+    use std::os::unix::process::CommandExt;
     let name = format!("bubblewand-pw-{}", unsafe { libc::getpid() });
     let socket = format!("{}/{}", xdg_runtime, name);
     let conf = if capture { PIPEWIRE_SANDBOX_CAPTURE_CONF } else { PIPEWIRE_SANDBOX_CONF };
 
     let pulse_server = format!("unix:{}/pulse/native", xdg_runtime);
-    let pw_child = Command::new(PIPEWIRE)
-        .arg("-c").arg(conf)
+    let mut pw_cmd = Command::new(PIPEWIRE);
+    pw_cmd.arg("-c").arg(conf)
         .env("PIPEWIRE_CORE", &name)
         .env("XDG_RUNTIME_DIR", xdg_runtime)
-        .env("PULSE_SERVER", &pulse_server)
-        .spawn()
+        .env("PULSE_SERVER", &pulse_server);
+    unsafe { pw_cmd.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_int, 0, 0, 0); Ok(()) }); }
+    let pw_child = pw_cmd.spawn()
         .map_err(|e| io::Error::new(e.kind(), format!("pipewire: {}", e)))?;
 
     let mut ready = false;
@@ -746,6 +747,7 @@ fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<Pipewire
     if !WIREPLUMBER_SHARE.is_empty() {
         wp.env("XDG_DATA_DIRS", WIREPLUMBER_SHARE);
     }
+    unsafe { wp.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_int, 0, 0, 0); Ok(()) }); }
     let wp_child = wp.spawn()
         .map_err(|e| io::Error::new(e.kind(), format!("wireplumber: {}", e)))?;
 
@@ -959,6 +961,8 @@ mod tests {
     #[test]
     fn need_wayland_via_gui() { assert!(sa(|a| a.gui = true).need_wayland()); }
     #[test]
+    fn need_wayland_via_cage() { assert!(sa(|a| a.cage = true).need_wayland()); }
+    #[test]
     fn need_wayland_off() { assert!(!SandboxArgs::default().need_wayland()); }
 
     #[test]
@@ -1035,9 +1039,9 @@ mod tests {
     }
 
     #[test]
-    fn cli_args_xwayland() {
-        let out = sa(|a| a.xwayland = true).to_cli_args();
-        assert!(out.contains(&"--xwayland".into()));
+    fn cli_args_cage() {
+        let out = sa(|a| a.cage = true).to_cli_args();
+        assert!(out.contains(&"--cage".into()));
     }
 
     #[test]

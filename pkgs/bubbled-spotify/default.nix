@@ -11,6 +11,7 @@ pkgs.runCommand "bubbled-spotify"
   ''
     bubblewand-generator install \
       --gui \
+      --cage \
       --pasta \
       --pasta-mac=02:00:00:00:00:00 \
       --dbus-own=org.mpris.MediaPlayer2.spotify \
