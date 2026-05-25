@@ -20,10 +20,10 @@ if isIso then
   nixos.config.system.build.isoImage
 else
   pkgs.writeShellScriptBin "apply" ''
-    case "''${1:-switch}" in
+    case "''${1:-boot}" in
       switch|boot) ;;
       *) echo "usage: apply [switch|boot]" >&2; exit 1 ;;
     esac
     sudo nix-env --profile /nix/var/nix/profiles/system --set ${system}
-    sudo ${system}/bin/switch-to-configuration "''${1:-switch}"
+    sudo ${system}/bin/switch-to-configuration "''${1:-boot}"
   ''
