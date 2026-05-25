@@ -19,6 +19,7 @@ rec {
     inherit pkgs nix-cachyos-kernel;
     isIso = true;
   };
+  gaggimate = import ./gaggimate { inherit pkgs; };
   steam = import ./steam { inherit pkgs; };
   desktop-home = import ./desktop-home { inherit pkgs home-manager apiary; };
   desktop-home-applicator = pkgs.writeShellScriptBin "desktop-home-applicator" ''

@@ -32,5 +32,6 @@ in
     desktop-iso
     blog
     bubbled-syncthing
+    gaggimate
     ;
 }
