@@ -265,6 +265,7 @@
       "networkmanager"
       "wheel"
       "video"
+      "dialout"
     ];
     packages = with pkgs; [
       #  thunderbird
