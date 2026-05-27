@@ -50,14 +50,14 @@
   espArduinoBleScales = pkgs.fetchFromGitHub {
     owner = "gaggimate";
     repo = "esp-arduino-ble-scales";
-    rev = "HEAD";
-    hash = "sha256-h42MgjlTaZhoqm8dAdpIqNG3P/DDAD4fqvpIKE4C6to=";
+    rev = "67e0aa19572ebbfccae0a042dda1900fb40c42cc";
+    hash = "sha256-f6lgtA0HmmpVEpvOnLAmjp4xVnXMC/X7Po0Qh4IJ3vA=";
   };
 
   psm = pkgs.fetchFromGitHub {
     owner = "gaggimate";
     repo = "PSM.Library";
-    rev = "HEAD";
+    rev = "ae3718cb72392ea5781fce6fe4c7cf3aa288f363";
     hash = "sha256-SYKwIoh4/vbl0DguS6FDAK2GjwSb7rfIZrOPwbs1NX8=";
   };
 
@@ -122,7 +122,7 @@
   pwFusionVL53L3C = pkgs.fetchFromGitHub {
     owner = "PlayingWithFusion";
     repo = "PWFusion_VL53L3C";
-    rev = "HEAD";
+    rev = "d34e692d426c725e3f4af47aa12f0e9cb1c8d0a2";
     hash = "sha256-jlZUKPZAWB1RKCWhiioQY5YUT3zXtYRqSxEsvnKUnRE=";
   };
 }
