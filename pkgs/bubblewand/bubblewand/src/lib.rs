@@ -56,8 +56,16 @@ pub struct SandboxArgs {
     #[arg(long = "pasta-mac", value_name = "ADDR")]
     pub pasta_mac: Option<String>,
 
+    /// Full GPU access including /dev/dri/card* primary nodes (allows screen
+    /// capture via DRM). Needed for direct DRM compositors.
     #[arg(long)]
     pub gpu: bool,
+
+    /// Render-node-only GPU access: binds /dev/dri/renderD* but not card*.
+    /// Sufficient for hardware-accelerated rendering and video decode/encode;
+    /// the sandbox cannot read the host framebuffer via DRM.
+    #[arg(long = "gpu-render", conflicts_with = "gpu")]
+    pub gpu_render: bool,
 
     #[arg(long)]
     pub wayland: bool,
@@ -126,6 +134,7 @@ impl Default for SandboxArgs {
         Self {
             hostname: "bubble".into(),
             gui: false, audio: false, audio_capture: false, network: false, gpu: false,
+            gpu_render: false,
             wayland: false, pulse: false, pipewire: false, camera: false,
             pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
             pasta_mac: None,
@@ -171,6 +180,7 @@ impl SandboxArgs {
         flag!(self.network,       "--network");
         flag!(self.pasta,       "--pasta");
         flag!(self.gpu,         "--gpu");
+        flag!(self.gpu_render,  "--gpu-render");
         flag!(self.wayland,     "--wayland");
         flag!(self.pulse,       "--pulse");
         flag!(self.pipewire,    "--pipewire");
@@ -430,6 +440,15 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         if Path::new("/dev/dri").exists() {
             cmd.dev_bind("/dev/dri", "/dev/dri");
         }
+    } else if args.gpu_render {
+        // Bind only render nodes (renderD*). Skip primary nodes (card*) and
+        // legacy control nodes (controlD*) — those expose scanout via DRM
+        // GETFB/GETFB2 and would let the sandboxed app read the host screen.
+        for path in render_nodes() {
+            cmd.dev_bind(&path, &path);
+        }
+    }
+    if args.gpu || args.gpu_render {
         if Path::new("/sys/dev/char").exists() {
             cmd.ro_bind("/sys/dev/char", "/sys/dev/char");
         }
@@ -928,6 +947,22 @@ fn parse_child_pid(buf: &[u8]) -> Option<u32> {
 // ---------------------------------------------------------------------------
 // Device discovery
 // ---------------------------------------------------------------------------
+
+fn render_nodes() -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir("/dev/dri") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|n| n.starts_with("renderD"))
+                .unwrap_or(false)
+        })
+        .map(|e| e.path())
+        .collect()
+}
 
 fn gpu_pci_paths() -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir("/sys/bus/pci/devices") else {

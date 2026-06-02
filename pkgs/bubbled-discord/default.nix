@@ -16,7 +16,7 @@ pkgs.runCommand "bubbled-discord"
     # --share-tmp: electron singleton socket lives in /tmp
     bubblewand-generator install \
       --gui \
-      --gpu \
+      --gpu-render \
       --wayland \
       --pasta \
       --pasta-mac=02:00:00:00:00:00 \

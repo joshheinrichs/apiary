@@ -11,6 +11,7 @@ pkgs.runCommand "bubbled-spotify"
   ''
     bubblewand-generator install \
       --gui \
+      --gpu-render \
       --cage \
       --pasta \
       --pasta-mac=02:00:00:00:00:00 \
