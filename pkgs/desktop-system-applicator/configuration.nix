@@ -241,10 +241,6 @@
 
   services.logind.settings.Login.NAutoVTs = 6;
 
-  # https://wiki.nixos.org/wiki/Jellyfin
-  services.jellyfin.enable = true;
-  services.jellyfin.user = "josh";
-
   systemd.oomd = {
     enable = true;
     enableRootSlice = true;

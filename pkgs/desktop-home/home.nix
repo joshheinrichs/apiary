@@ -223,6 +223,26 @@ in
         };
         Install.WantedBy = [ "default.target" ];
       };
+
+    # https://wiki.nixos.org/wiki/Jellyfin
+    # Plain user service; consider sandboxing with bubblewand later.
+    jellyfin = {
+      Unit.Description = "Jellyfin Media Server";
+      Service = {
+        ExecStart =
+          "${pkgs.jellyfin}/bin/jellyfin"
+          + " --datadir ${config.xdg.dataHome}/jellyfin"
+          + " --configdir ${config.xdg.configHome}/jellyfin"
+          + " --cachedir ${config.xdg.cacheHome}/jellyfin"
+          + " --logdir ${config.xdg.stateHome}/jellyfin/log";
+        Restart = "on-failure";
+        RestartSec = 5;
+        # Jellyfin returns 143 on a clean (SIGTERM) restart; matches nixpkgs module.
+        SuccessExitStatus = "0 143";
+        UMask = "0077";
+      };
+      Install.WantedBy = [ "default.target" ];
+    };
   };
 
   nix = {
