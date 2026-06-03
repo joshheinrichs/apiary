@@ -9,6 +9,7 @@ nix run -f . desktop-home-applicator
 
 ## goals
 
+* build-oriented
 * minimal system-level configuration
 * sandbox applications
 * proper cgroup hierarchy
