@@ -2,7 +2,7 @@
   # git ls-remote https://github.com/NixOS/nixpkgs nixos-unstable
   nixpkgs-src = builtins.fetchGit {
     url = "https://github.com/NixOS/nixpkgs";
-    rev = "331800de5053fcebacf6813adb5db9c9dca22a0c";
+    rev = "9ae611a455b90cf061d8f332b977e387bda8e1ca";
     ref = "nixos-unstable";
     shallow = true;
   };
