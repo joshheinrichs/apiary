@@ -143,6 +143,36 @@ in
     '';
   };
 
+  # Single source of truth for dark mode: xdg-desktop-portal-gtk reads this
+  # and reports it as org.freedesktop.appearance color-scheme, so all
+  # portal-aware apps (Firefox included) go dark.
+  #
+  # The dconf user database is a build product, not `dconf load`ed at
+  # activation (home-manager's dconf.settings needs the activation script,
+  # which home-applicator deliberately never runs). Settings written by apps
+  # at runtime last only until the next apply replaces the database.
+  xdg.configFile."dconf/user".source =
+    pkgs.runCommand "dconf-user-db"
+      {
+        nativeBuildInputs = [ pkgs.dconf ];
+      }
+      ''
+        dconf compile $out ${
+          pkgs.writeTextDir "00-desktop-home" ''
+            [org/gnome/desktop/interface]
+            color-scheme='prefer-dark'
+          ''
+        }
+      '';
+
+  # GSettings only consults dconf in processes that load the dconf GIO
+  # module; scope it to the portal (the one reader we need) instead of
+  # setting it session-wide.
+  xdg.configFile."systemd/user/xdg-desktop-portal-gtk.service.d/dconf.conf".text = ''
+    [Service]
+    Environment=GIO_EXTRA_MODULES=${pkgs.dconf.lib}/lib/gio/modules
+  '';
+
   xdg.portal = {
     enable = true;
     xdgOpenUsePortal = true;
@@ -372,7 +402,11 @@ in
   };
   programs.firefox = {
     enable = true;
-    configPath = "${config.xdg.configHome}/mozilla/firefox";
+    # The nixpkgs Firefox wrapper sets MOZ_LEGACY_PROFILES=1, so Firefox reads
+    # ~/.mozilla/firefox. home-manager's default for stateVersion >= 26.05 is the
+    # XDG path (~/.config/mozilla/firefox), which Firefox never opens here, so pin
+    # configPath to the legacy path home-manager would otherwise migrate away from.
+    configPath = ".mozilla/firefox";
     policies.ExtensionSettings = {
       "uBlock0@raymondhill.net" = {
         install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
@@ -383,9 +417,9 @@ in
         installation_mode = "force_installed";
       };
     };
-    profiles.default.settings = {
-      "widget.content.allow-gtk-dark-theme" = true;
-      "ui.systemUsesDarkTheme" = 2;
+    profiles.default = {
+      id = 0;
+      isDefault = true;
     };
   };
   programs.zed-editor = {
