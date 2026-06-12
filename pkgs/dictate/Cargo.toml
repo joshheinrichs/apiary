@@ -1,0 +1,9 @@
+[package]
+name = "dictate"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+libc = "0.2"
+serde_json = "1"

@@ -124,6 +124,10 @@ in
         "${modifier}+space" = "exec ${apiary.fuzzel-window-switcher}/bin/fuzzel-window-switcher";
         "Print" = "exec shotman --capture output";
         "Alt+Print" = "exec shotman --capture region";
+        # Hold-to-talk dictation: hold, speak, release; text is typed into
+        # the focused window.
+        "--no-repeat ${modifier}+m" = "exec ${apiary.dictate}/bin/dictate start";
+        "--release ${modifier}+m" = "exec ${apiary.dictate}/bin/dictate stop";
       };
       # window.commands = [
       #   { criteria = { class = ".*"; }; command = "move container to workspace 1, workspace 1"; }
@@ -198,6 +202,22 @@ in
       };
       Service = {
         ExecStart = "${pkgs.wireplumber}/bin/wireplumber";
+        Restart = "on-failure";
+      };
+      Install = {
+        WantedBy = [ "default.target" ];
+      };
+    };
+
+    # Virtual source "DeepFilter Microphone" (noise suppression + gain);
+    # select it as the input device in Discord or pavucontrol.
+    mic-filter = {
+      Unit = {
+        After = [ "pipewire.service" ];
+        Requires = [ "pipewire.service" ];
+      };
+      Service = {
+        ExecStart = "${apiary.mic-filter}/bin/mic-filter";
         Restart = "on-failure";
       };
       Install = {
