@@ -14,20 +14,28 @@ pkgs.lib.makeOverridable (
       sha256 = "12xwj3qp44l1m2ydfg4acbn5a13k6filisycgc5nnl6zq8vxp3ak";
     };
   in
-  # Hold-to-talk dictation: `dictate start` records the mic, `dictate stop`
-  # transcribes the recording and types the text into the focused window via
-  # the virtual-keyboard protocol. Wired to press/release sway keybindings.
+  # Hold-to-talk dictation: `dictate start` loads the model and records the mic,
+  # re-decoding the whole clip back-to-back and reconciling the focused window's
+  # text toward each decode via the virtual-keyboard protocol as you speak.
+  # `dictate stop` does the final full-clip decode. Wired to press/release sway
+  # keybindings.
+  #
+  # sherpa-onnx is linked in-process so the model is loaded once per hold; all
+  # dependency paths are substituted directly into the source at build time.
   pkgs.rustPlatform.buildRustPackage {
     pname = "dictate";
     version = "0.1.0";
     src = ./.;
     cargoLock.lockFile = ./Cargo.lock;
-    env = {
-      DICTATE_PIPEWIRE = "${pkgs.pipewire}";
-      DICTATE_SHERPA_ONNX = "${pkgs.sherpa-onnx}";
-      DICTATE_WTYPE = "${pkgs.wtype}";
-      DICTATE_MODEL = "${model}";
-      DICTATE_TARGET = target;
-    };
+    nativeBuildInputs = [ pkgs.rustPlatform.bindgenHook ];
+    buildInputs = [ pkgs.sherpa-onnx ];
+    postPatch = ''
+      substituteInPlace build.rs \
+        --replace-fail '@sherpa@' '${pkgs.sherpa-onnx}'
+      substituteInPlace src/main.rs \
+        --replace-fail '@pipewire@' '${pkgs.pipewire}' \
+        --replace-fail '@model@' '${model}' \
+        --replace-fail '@target@' '${target}'
+    '';
   }
 ) { }
