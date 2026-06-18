@@ -22,6 +22,7 @@ rec {
     isIso = true;
   };
   gaggimate = import ./gaggimate { inherit pkgs; };
+  crosspoint-reader = import ./crosspoint-reader { inherit pkgs; };
   steam = import ./steam { inherit pkgs; };
   desktop-home = import ./desktop-home { inherit pkgs home-manager apiary; };
   desktop-home-applicator = pkgs.writeShellScriptBin "desktop-home-applicator" ''

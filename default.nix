@@ -33,5 +33,6 @@ in
     blog
     bubbled-syncthing
     gaggimate
+    crosspoint-reader
     ;
 }
