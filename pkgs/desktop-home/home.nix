@@ -347,6 +347,7 @@ in
   programs.home-manager.enable = true;
   programs.claude-code = {
     enable = true;
+    settings.model = "opus";
     settings.hooks.PreToolUse = [
       {
         matcher = "Bash";
