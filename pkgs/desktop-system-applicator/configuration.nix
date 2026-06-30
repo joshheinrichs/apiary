@@ -235,10 +235,6 @@
   # Alloy needs this for the eBPF component to work
   systemd.services.alloy.serviceConfig.User = "root";
 
-  services.udev.extraRules = ''
-    SUBSYSTEM=="drm", KERNEL=="card1", ATTR{card1-HDMI-A-1/status}=="connected", TAG+="seat", ENV{ID_SEAT}="seat1"
-  '';
-
   services.logind.settings.Login.NAutoVTs = 6;
 
   systemd.oomd = {
