@@ -1,13 +1,13 @@
 { pkgs }:
 
 let
-  version = "1.3.0";
+  version = "1.4.1";
 
   src = pkgs.fetchFromGitHub {
     owner = "crosspoint-reader";
     repo  = "crosspoint-reader";
-    rev   = "2266060e84d1e46d725443efc8d4333eec991a47";
-    hash  = "sha256-tWGvjqCqAdDIRpCCVbnCnx5D2OEoF2bxiaj/crHLO0c=";
+    rev   = "5b26574719d2980201eb2222852b2e98152a97f4";
+    hash  = "sha256-9m5vwf46iiLo1T8ca+3IFoJyPDaSpCEkHxjapfPZuW0=";
   };
 
   # The open-x4-sdk submodule (community-sdk) provides the symlink:// libs
@@ -16,8 +16,8 @@ let
   sdk = pkgs.fetchFromGitHub {
     owner = "crosspoint-reader";
     repo  = "community-sdk";
-    rev   = "26648d643a1c883ab2f71e1869d05fe2a0c9d498";
-    hash  = "sha256-VfrxA5HZDzTgMK6TE4y7LHFSOOAEoW4crQFuEDvXlOg=";
+    rev   = "198ad267219c25c8ab84418b806c66f1fb5216a3";
+    hash  = "sha256-FvPQ5nhNUT3tEpgOiaXDc/Gb7cKJLmjodQI7j1UnVM4=";
   };
 
   packages = import ./packages.nix { inherit pkgs; };
