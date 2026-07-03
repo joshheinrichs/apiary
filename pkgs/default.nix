@@ -14,6 +14,8 @@ rec {
   scoper = import ./scoper { inherit pkgs; };
   mic-filter = import ./mic-filter { inherit pkgs; };
   dictate = import ./dictate { inherit pkgs; };
+  device-dumper = import ./device-dumper { inherit pkgs; };
+  desktop-devices = import ./desktop-devices;
   desktop-system-applicator = import ./desktop-system-applicator {
     inherit pkgs nix-cachyos-kernel;
   };

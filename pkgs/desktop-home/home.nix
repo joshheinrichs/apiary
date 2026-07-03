@@ -120,6 +120,12 @@ in
       # ];
       menu = "fuzzel";
       terminal = "${apiary.scoper}/bin/scoper --slice=apps -- ${pkgs.foot}/bin/foot";
+      output = lib.listToAttrs (
+        map (m: {
+          name = "${m.make} ${m.model} ${m.serial}";
+          value = { scale = "1.5"; };
+        }) (lib.filter (m: m.serial == "112NTFA27619") apiary.desktop-devices.monitors)
+      );
       keybindings = lib.mkOptionDefault {
         "${modifier}+space" = "exec ${apiary.fuzzel-window-switcher}/bin/fuzzel-window-switcher";
         "Print" = "exec shotman --capture output";
