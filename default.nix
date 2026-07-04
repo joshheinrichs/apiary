@@ -34,5 +34,6 @@ in
     bubbled-syncthing
     gaggimate
     crosspoint-reader
+    device-dumper
     ;
 }

@@ -1,6 +1,6 @@
+mod audio;
 mod monitors;
 
-use monitors::Monitor;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -8,10 +8,12 @@ use std::io::Read;
 #[derive(Serialize, Deserialize)]
 struct Record {
     #[serde(default)]
-    monitors: Vec<Monitor>,
+    monitors: Vec<monitors::Monitor>,
+    #[serde(default)]
+    audio: Vec<audio::AudioDevice>,
 }
 
-fn identity(m: &Monitor) -> String {
+fn monitor_key(m: &monitors::Monitor) -> String {
     format!(
         "{}\u{1f}{}\u{1f}{}",
         m.make.as_deref().unwrap_or(""),
@@ -20,23 +22,25 @@ fn identity(m: &Monitor) -> String {
     )
 }
 
+fn merge<T>(existing: Vec<T>, current: Vec<T>, key: impl Fn(&T) -> String) -> Vec<T> {
+    let mut by_id: BTreeMap<String, T> = BTreeMap::new();
+    for x in existing.into_iter().chain(current) {
+        by_id.insert(key(&x), x);
+    }
+    by_id.into_values().collect()
+}
+
 fn main() {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input).ok();
-
-    // Append-only: seed from the prior record, then upsert what's connected now.
-    let mut by_id: BTreeMap<String, Monitor> = BTreeMap::new();
-    if let Ok(existing) = serde_json::from_str::<Record>(&input) {
-        for m in existing.monitors {
-            by_id.insert(identity(&m), m);
-        }
-    }
-    for m in monitors::list() {
-        by_id.insert(identity(&m), m);
-    }
+    let existing: Record = serde_json::from_str(&input).unwrap_or(Record {
+        monitors: Vec::new(),
+        audio: Vec::new(),
+    });
 
     let record = Record {
-        monitors: by_id.into_values().collect(),
+        monitors: merge(existing.monitors, monitors::list(), monitor_key),
+        audio: merge(existing.audio, audio::list(), |a| a.serial.clone()),
     };
     println!("{}", serde_json::to_string_pretty(&record).unwrap());
 }

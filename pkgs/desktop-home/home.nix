@@ -9,6 +9,7 @@
 let
   monitorLG = apiary.desktop-devices.monitorById "112NTFA27619";
   monitorASUS = apiary.desktop-devices.monitorById "0x00025AF7";
+  komplete = apiary.desktop-devices.audioById "4397123E";
 
   rtk-init =
     pkgs.runCommand "rtk-init"
@@ -181,6 +182,33 @@ in
   xdg.configFile."systemd/user/xdg-desktop-portal-gtk.service.d/dconf.conf".text = ''
     [Service]
     Environment=GIO_EXTRA_MODULES=${pkgs.dconf.lib}/lib/gio/modules
+  '';
+
+  # set default sink/source via priority (soft default). the hard default
+  # (wpctl set-default) is stateful, so it'd belong in home-applicator, not here.
+  xdg.configFile."wireplumber/wireplumber.conf.d/51-komplete-audio-6.conf".text = ''
+    monitor.alsa.rules = [
+      {
+        matches = [
+          { device.name = "${komplete.device_name}" }
+        ]
+        actions = {
+          update-props = {
+            device.profile = "output:analog-surround-21+input:analog-surround-21"
+          }
+        }
+      }
+      {
+        matches = [
+          { api.alsa.card.name = "${komplete.product}" }
+        ]
+        actions = {
+          update-props = {
+            priority.session = 10000
+          }
+        }
+      }
+    ]
   '';
 
   xdg.portal = {

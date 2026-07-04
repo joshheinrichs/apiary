@@ -160,5 +160,271 @@
         "ictcp": false
       }
     }
+  ],
+  "audio": [
+    {
+      "serial": "4397123E",
+      "vendor": "Native Instruments",
+      "product": "Komplete Audio 6",
+      "device_name": "alsa_card.usb-Native_Instruments_Komplete_Audio_6_4397123E-00",
+      "bus": "usb",
+      "profiles": [
+        {
+          "name": "off",
+          "description": "Off"
+        },
+        {
+          "name": "output:analog-surround-21+input:analog-surround-21",
+          "description": "Analog Surround 2.1 Output + Analog Surround 2.1 Input"
+        },
+        {
+          "name": "output:analog-surround-21+input:analog-surround-41",
+          "description": "Analog Surround 2.1 Output + Analog Surround 4.1 Input"
+        },
+        {
+          "name": "output:analog-surround-21+input:analog-surround-51",
+          "description": "Analog Surround 2.1 Output + Analog Surround 5.1 Input"
+        },
+        {
+          "name": "output:analog-surround-41+input:analog-surround-21",
+          "description": "Analog Surround 4.1 Output + Analog Surround 2.1 Input"
+        },
+        {
+          "name": "output:analog-surround-41+input:analog-surround-41",
+          "description": "Analog Surround 4.1 Output + Analog Surround 4.1 Input"
+        },
+        {
+          "name": "output:analog-surround-41+input:analog-surround-51",
+          "description": "Analog Surround 4.1 Output + Analog Surround 5.1 Input"
+        },
+        {
+          "name": "output:analog-surround-51+input:analog-surround-21",
+          "description": "Analog Surround 5.1 Output + Analog Surround 2.1 Input"
+        },
+        {
+          "name": "output:analog-surround-51+input:analog-surround-41",
+          "description": "Analog Surround 5.1 Output + Analog Surround 4.1 Input"
+        },
+        {
+          "name": "output:analog-surround-51+input:analog-surround-51",
+          "description": "Analog Surround 5.1 Output + Analog Surround 5.1 Input"
+        },
+        {
+          "name": "output:analog-surround-21+input:analog-surround-50",
+          "description": "Analog Surround 2.1 Output + Analog Surround 5.0 Input"
+        },
+        {
+          "name": "output:analog-surround-41+input:analog-surround-50",
+          "description": "Analog Surround 4.1 Output + Analog Surround 5.0 Input"
+        },
+        {
+          "name": "output:analog-surround-51+input:analog-surround-50",
+          "description": "Analog Surround 5.1 Output + Analog Surround 5.0 Input"
+        },
+        {
+          "name": "output:analog-surround-21",
+          "description": "Analog Surround 2.1 Output"
+        },
+        {
+          "name": "output:analog-surround-41",
+          "description": "Analog Surround 4.1 Output"
+        },
+        {
+          "name": "output:analog-surround-51",
+          "description": "Analog Surround 5.1 Output"
+        },
+        {
+          "name": "output:analog-surround-50+input:analog-surround-21",
+          "description": "Analog Surround 5.0 Output + Analog Surround 2.1 Input"
+        },
+        {
+          "name": "output:analog-surround-50+input:analog-surround-41",
+          "description": "Analog Surround 5.0 Output + Analog Surround 4.1 Input"
+        },
+        {
+          "name": "output:analog-surround-50+input:analog-surround-51",
+          "description": "Analog Surround 5.0 Output + Analog Surround 5.1 Input"
+        },
+        {
+          "name": "output:analog-surround-50+input:analog-surround-50",
+          "description": "Analog Surround 5.0 Output + Analog Surround 5.0 Input"
+        },
+        {
+          "name": "output:analog-surround-50",
+          "description": "Analog Surround 5.0 Output"
+        },
+        {
+          "name": "input:analog-surround-21",
+          "description": "Analog Surround 2.1 Input"
+        },
+        {
+          "name": "input:analog-surround-41",
+          "description": "Analog Surround 4.1 Input"
+        },
+        {
+          "name": "input:analog-surround-51",
+          "description": "Analog Surround 5.1 Input"
+        },
+        {
+          "name": "input:analog-surround-50",
+          "description": "Analog Surround 5.0 Input"
+        },
+        {
+          "name": "pro-audio",
+          "description": "Pro Audio"
+        }
+      ]
+    },
+    {
+      "serial": "alsa_card.pci-0000_03_00.1",
+      "vendor": "Advanced Micro Devices, Inc. [AMD/ATI]",
+      "product": "Navi 48 HDMI/DP Audio Controller",
+      "device_name": "alsa_card.pci-0000_03_00.1",
+      "bus": "pci",
+      "profiles": [
+        {
+          "name": "off",
+          "description": "Off"
+        },
+        {
+          "name": "output:hdmi-stereo",
+          "description": "Digital Stereo (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra1",
+          "description": "Digital Stereo (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra2",
+          "description": "Digital Stereo (HDMI 3) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra3",
+          "description": "Digital Stereo (HDMI 4) Output"
+        },
+        {
+          "name": "output:hdmi-surround",
+          "description": "Digital Surround 5.1 (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-surround71",
+          "description": "Digital Surround 7.1 (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-surround-extra1",
+          "description": "Digital Surround 5.1 (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-surround71-extra1",
+          "description": "Digital Surround 7.1 (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-surround-extra3",
+          "description": "Digital Surround 5.1 (HDMI 4) Output"
+        },
+        {
+          "name": "output:hdmi-surround71-extra3",
+          "description": "Digital Surround 7.1 (HDMI 4) Output"
+        },
+        {
+          "name": "pro-audio",
+          "description": "Pro Audio"
+        }
+      ]
+    },
+    {
+      "serial": "alsa_card.pci-0000_76_00.1",
+      "vendor": "Advanced Micro Devices, Inc. [AMD/ATI]",
+      "product": "Radeon High Definition Audio Controller",
+      "device_name": "alsa_card.pci-0000_76_00.1",
+      "bus": "pci",
+      "profiles": [
+        {
+          "name": "off",
+          "description": "Off"
+        },
+        {
+          "name": "output:hdmi-stereo",
+          "description": "Digital Stereo (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra1",
+          "description": "Digital Stereo (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra2",
+          "description": "Digital Stereo (HDMI 3) Output"
+        },
+        {
+          "name": "output:hdmi-stereo-extra3",
+          "description": "Digital Stereo (HDMI 4) Output"
+        },
+        {
+          "name": "output:hdmi-surround",
+          "description": "Digital Surround 5.1 (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-surround71",
+          "description": "Digital Surround 7.1 (HDMI) Output"
+        },
+        {
+          "name": "output:hdmi-surround-extra1",
+          "description": "Digital Surround 5.1 (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-surround71-extra1",
+          "description": "Digital Surround 7.1 (HDMI 2) Output"
+        },
+        {
+          "name": "output:hdmi-surround-extra2",
+          "description": "Digital Surround 5.1 (HDMI 3) Output"
+        },
+        {
+          "name": "output:hdmi-surround71-extra2",
+          "description": "Digital Surround 7.1 (HDMI 3) Output"
+        },
+        {
+          "name": "output:hdmi-surround-extra3",
+          "description": "Digital Surround 5.1 (HDMI 4) Output"
+        },
+        {
+          "name": "output:hdmi-surround71-extra3",
+          "description": "Digital Surround 7.1 (HDMI 4) Output"
+        },
+        {
+          "name": "pro-audio",
+          "description": "Pro Audio"
+        }
+      ]
+    },
+    {
+      "serial": "alsa_card.pci-0000_76_00.6",
+      "vendor": "Advanced Micro Devices, Inc. [AMD]",
+      "product": "Ryzen HD Audio Controller",
+      "device_name": "alsa_card.pci-0000_76_00.6",
+      "bus": "pci",
+      "profiles": [
+        {
+          "name": "off",
+          "description": "Off"
+        },
+        {
+          "name": "output:analog-stereo+input:analog-stereo",
+          "description": "Analog Stereo Duplex"
+        },
+        {
+          "name": "output:analog-stereo",
+          "description": "Analog Stereo Output"
+        },
+        {
+          "name": "input:analog-stereo",
+          "description": "Analog Stereo Input"
+        },
+        {
+          "name": "pro-audio",
+          "description": "Pro Audio"
+        }
+      ]
+    }
   ]
 }

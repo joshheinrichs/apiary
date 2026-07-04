@@ -9,4 +9,5 @@ pkgs.rustPlatform.buildRustPackage {
     pkgs.rustPlatform.bindgenHook
   ];
   buildInputs = [ pkgs.libdisplay-info ];
+  PWDUMP = "${pkgs.pipewire}/bin/pw-dump";
 }
