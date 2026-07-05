@@ -10,6 +10,9 @@ let
   monitorLG = apiary.desktop-devices.monitorById "112NTFA27619";
   monitorASUS = apiary.desktop-devices.monitorById "0x00025AF7";
   komplete = apiary.desktop-devices.audioById "4397123E";
+  kompleteMode = "analog-surround-21";
+  kompleteSource = "alsa_input.${lib.removePrefix "alsa_card." komplete.device_name}.${kompleteMode}";
+  dictate = apiary.dictate.override { target = apiary.mic-filter.name; };
 
   rtk-init =
     pkgs.runCommand "rtk-init"
@@ -137,8 +140,8 @@ in
         "Alt+Print" = "exec shotman --capture region";
         # Hold-to-talk dictation: hold, speak, release; text is typed into
         # the focused window.
-        "--no-repeat ${modifier}+m" = "exec ${apiary.dictate}/bin/dictate start";
-        "--release ${modifier}+m" = "exec ${apiary.dictate}/bin/dictate stop";
+        "--no-repeat ${modifier}+m" = "exec ${dictate}/bin/dictate start";
+        "--release ${modifier}+m" = "exec ${dictate}/bin/dictate stop";
       };
       # window.commands = [
       #   { criteria = { class = ".*"; }; command = "move container to workspace 1, workspace 1"; }
@@ -194,7 +197,7 @@ in
         ]
         actions = {
           update-props = {
-            device.profile = "output:analog-surround-21+input:analog-surround-21"
+            device.profile = "output:${kompleteMode}+input:${kompleteMode}"
           }
         }
       }
@@ -205,6 +208,19 @@ in
         actions = {
           update-props = {
             priority.session = 10000
+          }
+        }
+      }
+    ]
+    node.rules = [
+      {
+        matches = [
+          { node.name = "capture.${apiary.mic-filter.name}" }
+        ]
+        actions = {
+          update-props = {
+            target.object = "${kompleteSource}"
+            node.dont-fallback = true
           }
         }
       }

@@ -3,7 +3,7 @@ pkgs.lib.makeOverridable (
   {
     # PipeWire node to record from; falls back to the default source if the
     # node isn't present (e.g. mic-filter isn't running).
-    target ? "deepfilter_mic",
+    target ? "mic-filter",
   }:
   let
     # NVIDIA Parakeet-TDT 0.6B v2 (English), int8 ONNX export from the

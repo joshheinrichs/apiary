@@ -5,6 +5,8 @@ pkgs.lib.makeOverridable (
     gain ? 2.0,
     # Maximum noise attenuation in dB; lower it to let some ambience through.
     attenuationLimit ? 100,
+    # Node name; make it unique to run more than one instance.
+    name ? "mic-filter",
   }:
   let
     # A standalone pipewire process hosting a filter-chain: it captures the
@@ -66,11 +68,11 @@ pkgs.lib.makeOverridable (
             audio.rate = 48000
             audio.position = [ MONO ]
             capture.props = {
-              node.name = "capture.deepfilter_mic"
+              node.name = "capture.${name}"
               node.passive = true
             }
             playback.props = {
-              node.name = "deepfilter_mic"
+              node.name = "${name}"
               media.class = Audio/Source
             }
           }
@@ -81,7 +83,7 @@ pkgs.lib.makeOverridable (
   # pipewire only dlopens LADSPA plugins found under LADSPA_PATH (it joins
   # search dirs with the plugin name rather than accepting arbitrary
   # absolute paths), so the plugin's lib dir must be on the path.
-  pkgs.writeShellScriptBin "mic-filter" ''
+  pkgs.writeShellScriptBin name ''
     export LADSPA_PATH=${pkgs.deepfilternet}/lib/ladspa
     exec ${pkgs.pipewire}/bin/pipewire -c ${conf}
   ''
