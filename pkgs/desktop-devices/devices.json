@@ -1,11 +1,11 @@
 {
   "monitors": [
     {
-      "connector": "HDMI-A-2",
+      "connector": "DP-1",
       "make": "Ancor Communications Inc",
       "model": "ASUS MG279",
       "serial": "0x00025AF7",
-      "edid_version": "1.3",
+      "edid_version": "1.4",
       "manufacturer": "ACI",
       "product_code": 10151,
       "serial_number": 154359,
@@ -14,8 +14,8 @@
       "model_year": null,
       "gamma": 2.2,
       "video_input": {
-        "interface": "Undefined",
-        "color_bit_depth": null
+        "interface": "DisplayPort",
+        "color_bit_depth": 8
       },
       "screen": {
         "width_cm": 60,
@@ -23,7 +23,7 @@
       },
       "detailed_timings": [
         {
-          "pixel_clock_hz": 241500000,
+          "pixel_clock_hz": 586000000,
           "horiz_video": 2560,
           "vert_video": 1440,
           "horiz_image_mm": 597,
@@ -31,23 +31,15 @@
           "interlaced": false
         },
         {
-          "pixel_clock_hz": 148500000,
-          "horiz_video": 1920,
-          "vert_video": 1080,
+          "pixel_clock_hz": 241500000,
+          "horiz_video": 2560,
+          "vert_video": 1440,
           "horiz_image_mm": 597,
           "vert_image_mm": 336,
           "interlaced": false
         }
       ],
-      "range_limits": [
-        {
-          "min_vert_rate_hz": 50,
-          "max_vert_rate_hz": 120,
-          "min_horiz_rate_hz": 24000,
-          "max_horiz_rate_hz": 222000,
-          "max_pixel_clock_hz": 600000000
-        }
-      ],
+      "range_limits": [],
       "hdr": {
         "traditional_sdr": true,
         "traditional_hdr": false,
@@ -85,21 +77,21 @@
       }
     },
     {
-      "connector": "HDMI-A-1",
+      "connector": "DP-2",
       "make": "LG Electronics",
       "model": "LG ULTRAFINE",
       "serial": "112NTFA27619",
-      "edid_version": "1.3",
+      "edid_version": "1.4",
       "manufacturer": "GSM",
-      "product_code": 23489,
+      "product_code": 23490,
       "serial_number": 75619,
       "manufacture_week": 12,
       "manufacture_year": 2021,
       "model_year": null,
       "gamma": 2.2,
       "video_input": {
-        "interface": "Undefined",
-        "color_bit_depth": null
+        "interface": "DisplayPort",
+        "color_bit_depth": 10
       },
       "screen": {
         "width_cm": 70,
@@ -107,7 +99,7 @@
       },
       "detailed_timings": [
         {
-          "pixel_clock_hz": 594000000,
+          "pixel_clock_hz": 533250000,
           "horiz_video": 3840,
           "vert_video": 2160,
           "horiz_image_mm": 697,
@@ -115,15 +107,7 @@
           "interlaced": false
         }
       ],
-      "range_limits": [
-        {
-          "min_vert_rate_hz": 40,
-          "max_vert_rate_hz": 60,
-          "min_horiz_rate_hz": 30000,
-          "max_horiz_rate_hz": 135000,
-          "max_pixel_clock_hz": 600000000
-        }
-      ],
+      "range_limits": [],
       "hdr": {
         "traditional_sdr": true,
         "traditional_hdr": false,
@@ -155,6 +139,90 @@
       "colorimetry": {
         "bt2020_rgb": true,
         "bt2020_ycc": true,
+        "bt2020_cycc": false,
+        "st2113_rgb": false,
+        "ictcp": false
+      }
+    },
+    {
+      "connector": "HDMI-A-2",
+      "make": "Technical Concepts Ltd",
+      "model": "55R617CA",
+      "serial": null,
+      "edid_version": "1.3",
+      "manufacturer": "TCL",
+      "product_code": 0,
+      "serial_number": null,
+      "manufacture_week": 31,
+      "manufacture_year": 2019,
+      "model_year": null,
+      "gamma": 2.2,
+      "video_input": {
+        "interface": "Undefined",
+        "color_bit_depth": null
+      },
+      "screen": {
+        "width_cm": 122,
+        "height_cm": 68
+      },
+      "detailed_timings": [
+        {
+          "pixel_clock_hz": 297000000,
+          "horiz_video": 3840,
+          "vert_video": 2160,
+          "horiz_image_mm": 800,
+          "vert_image_mm": 450,
+          "interlaced": false
+        },
+        {
+          "pixel_clock_hz": 148500000,
+          "horiz_video": 1920,
+          "vert_video": 1080,
+          "horiz_image_mm": 800,
+          "vert_image_mm": 450,
+          "interlaced": false
+        }
+      ],
+      "range_limits": [
+        {
+          "min_vert_rate_hz": 23,
+          "max_vert_rate_hz": 76,
+          "min_horiz_rate_hz": 15000,
+          "max_horiz_rate_hz": 81000,
+          "max_pixel_clock_hz": 340000000
+        }
+      ],
+      "hdr": {
+        "traditional_sdr": true,
+        "traditional_hdr": false,
+        "pq": false,
+        "hlg": false,
+        "max_luminance": 0.0,
+        "max_frame_avg_luminance": 0.0,
+        "min_luminance": 0.0
+      },
+      "color_primaries": {
+        "has_primaries": true,
+        "red": [
+          0.6425781,
+          0.33203125
+        ],
+        "green": [
+          0.32226562,
+          0.6230469
+        ],
+        "blue": [
+          0.14550781,
+          0.055664062
+        ],
+        "white": [
+          0.28027344,
+          0.29003906
+        ]
+      },
+      "colorimetry": {
+        "bt2020_rgb": false,
+        "bt2020_ycc": false,
         "bt2020_cycc": false,
         "st2113_rgb": false,
         "ictcp": false
@@ -303,20 +371,12 @@
           "description": "Digital Stereo (HDMI 4) Output"
         },
         {
-          "name": "output:hdmi-surround",
-          "description": "Digital Surround 5.1 (HDMI) Output"
+          "name": "output:hdmi-surround-extra2",
+          "description": "Digital Surround 5.1 (HDMI 3) Output"
         },
         {
-          "name": "output:hdmi-surround71",
-          "description": "Digital Surround 7.1 (HDMI) Output"
-        },
-        {
-          "name": "output:hdmi-surround-extra1",
-          "description": "Digital Surround 5.1 (HDMI 2) Output"
-        },
-        {
-          "name": "output:hdmi-surround71-extra1",
-          "description": "Digital Surround 7.1 (HDMI 2) Output"
+          "name": "output:hdmi-surround71-extra2",
+          "description": "Digital Surround 7.1 (HDMI 3) Output"
         },
         {
           "name": "output:hdmi-surround-extra3",
@@ -425,6 +485,90 @@
           "description": "Pro Audio"
         }
       ]
+    }
+  ],
+  "inputs": [
+    {
+      "identifier": "1133:16461:Logitech_K400_Plus",
+      "name": "Logitech K400 Plus",
+      "vendor": 1133,
+      "product": 16461,
+      "bus": "usb",
+      "uniq": "80-fb-ac-1b"
+    },
+    {
+      "identifier": "1133:16514:Logitech_MX_Master_3",
+      "name": "Logitech MX Master 3",
+      "vendor": 1133,
+      "product": 16514,
+      "bus": "usb",
+      "uniq": "ea-9a-fe-49"
+    },
+    {
+      "identifier": "1241:17733:USB_Keyboard",
+      "name": "USB Keyboard",
+      "vendor": 1241,
+      "product": 17733,
+      "bus": "usb",
+      "uniq": null
+    },
+    {
+      "identifier": "1241:17733:USB_Keyboard_Consumer_Control",
+      "name": "USB Keyboard Consumer Control",
+      "vendor": 1241,
+      "product": 17733,
+      "bus": "usb",
+      "uniq": null
+    },
+    {
+      "identifier": "1241:17733:USB_Keyboard_System_Control",
+      "name": "USB Keyboard System Control",
+      "vendor": 1241,
+      "product": 17733,
+      "bus": "usb",
+      "uniq": null
+    }
+  ],
+  "usb": [
+    {
+      "identifier": "046d:c52b",
+      "name": "USB Receiver",
+      "manufacturer": "Logitech",
+      "vendor": 1133,
+      "product": 50475,
+      "serial": null
+    },
+    {
+      "identifier": "04d9:4545",
+      "name": "USB Keyboard",
+      "manufacturer": null,
+      "vendor": 1241,
+      "product": 17733,
+      "serial": null
+    },
+    {
+      "identifier": "057e:0337:15/07/2014",
+      "name": "WUP-028",
+      "manufacturer": "Nintendo",
+      "vendor": 1406,
+      "product": 823,
+      "serial": "15/07/2014"
+    },
+    {
+      "identifier": "0bda:8922:00E04C885A01",
+      "name": "Bluetooth Radio",
+      "manufacturer": "Realtek",
+      "vendor": 3034,
+      "product": 35106,
+      "serial": "00E04C885A01"
+    },
+    {
+      "identifier": "17cc:1001:4397123E",
+      "name": "Komplete Audio 6",
+      "manufacturer": "Native Instruments",
+      "vendor": 6092,
+      "product": 4097,
+      "serial": "4397123E"
     }
   ]
 }

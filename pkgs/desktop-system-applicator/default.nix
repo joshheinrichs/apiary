@@ -1,10 +1,14 @@
 {
   pkgs,
   nix-cachyos-kernel,
+  apiary,
   isIso ? false,
 }:
 let
   nixos = import "${pkgs.path}/nixos" {
+    # Make the apiary library available to the config modules (e.g.
+    # configuration.nix reads desktop-devices for the GC-adapter udev rule).
+    specialArgs = { inherit apiary; };
     configuration = {
       imports = [
         ./configuration.nix

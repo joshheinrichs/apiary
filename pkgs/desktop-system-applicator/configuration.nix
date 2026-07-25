@@ -2,8 +2,15 @@
 # your system.  Help is available in the configuration.nix(5) man page
 # and in the NixOS manual (accessible by running ‘nixos-help’).
 
-{ config, pkgs, ... }:
+{ config, pkgs, lib, apiary, ... }:
 
+let
+  # GameCube adapter vid/pid, sourced from the device-dumper manifest rather than
+  # hand-typed. Its identifier is the udev-ready hex "vid:pid:serial".
+  gcAdapterId = lib.splitString ":" (apiary.desktop-devices.usbByName "WUP-028").identifier;
+  gcAdapterVendor = builtins.elemAt gcAdapterId 0;
+  gcAdapterProduct = builtins.elemAt gcAdapterId 1;
+in
 {
   imports = [
     # Include the results of the hardware scan.
@@ -249,6 +256,12 @@
   # xdg.portal.wlr.enable = true;
   services.udisks2.enable = true;
 
+  # GameCube controller adapter (Nintendo WUP-028): Slippi Dolphin opens it
+  # directly via libusb, so it needs a udev rule granting the active session user
+  # access. vid/pid come from the device-dumper manifest (see desktop-devices).
+  services.udev.extraRules = ''
+    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess"
+  '';
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.josh = {
     isNormalUser = true;

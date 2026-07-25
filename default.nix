@@ -34,6 +34,7 @@ in
     bubbled-syncthing
     gaggimate
     crosspoint-reader
+    slippi-dolphin
     device-dumper
     ;
 }

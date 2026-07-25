@@ -1,0 +1,22 @@
+--- a/Source/Core/Common/FileUtil.cpp	2026-07-25 11:07:48.232043142 -0600
++++ b/Source/Core/Common/FileUtil.cpp	2026-07-25 11:07:48.235339433 -0600
+@@ -870,16 +870,9 @@
+   const std::string sys_directory = s_android_sys_directory + DIR_SEP;
+   ASSERT_MSG(COMMON, !s_android_sys_directory.empty(), "Sys directory has not been set");
+ #else
+-  const char* home = getenv("HOME");
+-  if (!home)
+-    home = getenv("PWD");
+-  if (!home)
+-    home = "";
+-  std::string home_path = std::string(home) + DIR_SEP;
+-  const char* config_home = getenv("XDG_CONFIG_HOME");
+-  const std::string sys_directory =
+-      std::string(config_home && config_home[0] == '/' ? config_home : (home_path + ".config")) +
+-      DIR_SEP DOLPHIN_DATA_DIR DIR_SEP "Sys" DIR_SEP;
++  // Nix: use the compiled store data dir (DATA_DIR = $out/share/dolphin-emu/)
++  // instead of the fork's hardcoded ~/.config/SlippiOnline/Sys.
++  const std::string sys_directory = DATA_DIR "sys" DIR_SEP;
+ #endif
+ 
+   INFO_LOG_FMT(COMMON, "CreateSysDirectoryPath: Setting to {}", sys_directory);

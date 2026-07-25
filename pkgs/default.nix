@@ -17,14 +17,15 @@ rec {
   device-dumper = import ./device-dumper { inherit pkgs; };
   desktop-devices = import ./desktop-devices;
   desktop-system-applicator = import ./desktop-system-applicator {
-    inherit pkgs nix-cachyos-kernel;
+    inherit pkgs nix-cachyos-kernel apiary;
   };
   desktop-iso = import ./desktop-system-applicator {
-    inherit pkgs nix-cachyos-kernel;
+    inherit pkgs nix-cachyos-kernel apiary;
     isIso = true;
   };
   gaggimate = import ./gaggimate { inherit pkgs; };
   crosspoint-reader = import ./crosspoint-reader { inherit pkgs; };
+  slippi-dolphin = import ./slippi-dolphin { inherit pkgs; };
   steam = import ./steam { inherit pkgs; };
   desktop-home = import ./desktop-home { inherit pkgs home-manager apiary; };
   desktop-home-applicator = pkgs.writeShellScriptBin "desktop-home-applicator" ''

@@ -1,5 +1,7 @@
 mod audio;
+mod inputs;
 mod monitors;
+mod usb;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -11,6 +13,10 @@ struct Record {
     monitors: Vec<monitors::Monitor>,
     #[serde(default)]
     audio: Vec<audio::AudioDevice>,
+    #[serde(default)]
+    inputs: Vec<inputs::InputDevice>,
+    #[serde(default)]
+    usb: Vec<usb::UsbDevice>,
 }
 
 fn monitor_key(m: &monitors::Monitor) -> String {
@@ -36,11 +42,15 @@ fn main() {
     let existing: Record = serde_json::from_str(&input).unwrap_or(Record {
         monitors: Vec::new(),
         audio: Vec::new(),
+        inputs: Vec::new(),
+        usb: Vec::new(),
     });
 
     let record = Record {
         monitors: merge(existing.monitors, monitors::list(), monitor_key),
         audio: merge(existing.audio, audio::list(), |a| a.serial.clone()),
+        inputs: merge(existing.inputs, inputs::list(), |i| i.identifier.clone()),
+        usb: merge(existing.usb, usb::list(), |u| u.identifier.clone()),
     };
     println!("{}", serde_json::to_string_pretty(&record).unwrap());
 }
