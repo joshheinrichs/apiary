@@ -2,21 +2,21 @@
   # git ls-remote https://github.com/NixOS/nixpkgs nixos-unstable
   nixpkgs-src = builtins.fetchGit {
     url = "https://github.com/NixOS/nixpkgs";
-    rev = "9ae611a455b90cf061d8f332b977e387bda8e1ca";
+    rev = "2c423e03bbafcff28bfadc6781a4a8257f205cb5";
     ref = "nixos-unstable";
     shallow = true;
   };
   # git ls-remote https://github.com/xddxdd/nix-cachyos-kernel release
   nix-cachyos-kernel-src = builtins.fetchGit {
     url = "https://github.com/xddxdd/nix-cachyos-kernel";
-    rev = "236462fb93cb56e26e6a6801ba5edb6dad66be0d";
+    rev = "c69c33c24148defbcc34ab25456cc460bc33fdbb";
     ref = "release";
     shallow = true;
   };
   # git ls-remote https://github.com/nix-community/home-manager master
   home-manager-src = builtins.fetchGit {
     url = "https://github.com/nix-community/home-manager";
-    rev = "f384af1bec6423a0d4ba1855917ab948f64e5808";
+    rev = "ec1a8fdf74ed3f276148ee106299a2ba0e65d51f";
     ref = "master";
     shallow = true;
   };
