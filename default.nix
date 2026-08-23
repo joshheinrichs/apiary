@@ -36,5 +36,6 @@ in
     crosspoint-reader
     slippi-dolphin
     device-dumper
+    winry315-applicator
     ;
 }
