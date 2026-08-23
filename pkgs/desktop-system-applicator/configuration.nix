@@ -29,6 +29,8 @@ in
     "kernel.kptr_restrict" = 0;
   };
 
+  nix.package = pkgs.nixVersions.latest;
+
   networking.hostName = "nixos"; # Define your hostname.
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
