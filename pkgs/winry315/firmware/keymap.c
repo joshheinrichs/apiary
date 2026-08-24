@@ -21,14 +21,9 @@ enum layer_names { _BASE, _BOOT };
 #define EVT_ENCODER 0x02
 
 // Host -> pad
-#define CMD_SOLID 0x01
-#define CMD_KEYS 0x02
-#define CMD_BANDS 0x03
 #define CMD_PING 0x04
-#define CMD_FRAME 0x05
+#define CMD_LEDS 0x02
 
-// Overrides that fit after the opcode and wash colour, at 4 bytes each.
-#define FRAME_MAX_OVERRIDES ((RAW_MSG_SIZE - 5) / 4)
 
 // What the pad falls back to once the host goes quiet, so a dead daemon looks
 // obviously different from a working one rather than merely unresponsive.
@@ -59,17 +54,6 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     ),
 };
 
-// Each column of the key grid, bottom LED first, for the bar-graph rendering
-// CMD_BANDS does. Indices come from the LED map in winry315.c.
-static const uint8_t PROGMEM band_leds[5][3] = {
-    { 8,  7,  6},
-    { 9, 10, 11},
-    {14, 13, 12},
-    {15, 16, 17},
-    {20, 19, 18},
-};
-// clang-format on
-
 // Matrix columns 0..14 are the 15 keys in reading order, and 15/16/17 are the
 // centre/right/left encoder switches. Report the switches as 15/16/17 in
 // left/centre/right order so they line up with the encoder indices themselves.
@@ -86,74 +70,29 @@ static uint8_t key_index(uint8_t col) {
     }
 }
 
-static void render_bands(const uint8_t *rgb, uint8_t count, const uint8_t *levels) {
-    memset(led_buf, 0, sizeof(led_buf));
-    if (count > 5) count = 5;
-    for (uint8_t c = 0; c < count; c++) {
-        // Spread one 0..255 level across the column's three LEDs, so a level of
-        // 255 lights all three and anything less part-fills from the bottom.
-        uint16_t scaled = (uint16_t)levels[c] * 3;
-        for (uint8_t r = 0; r < 3; r++) {
-            uint16_t seg = scaled > (uint16_t)r * 255 ? scaled - (uint16_t)r * 255 : 0;
-            if (seg > 255) seg = 255;
-            uint8_t led      = pgm_read_byte(&band_leds[c][r]);
-            led_buf[led][0] = (uint8_t)((uint16_t)rgb[0] * seg / 255);
-            led_buf[led][1] = (uint8_t)((uint16_t)rgb[1] * seg / 255);
-            led_buf[led][2] = (uint8_t)((uint16_t)rgb[2] * seg / 255);
-        }
-    }
-}
-
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     if (length < 1) return;
     last_host_msg = timer_read32();
     host_seen     = true;
 
     switch (data[0]) {
-        case CMD_SOLID:
-            for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) {
-                led_buf[i][0] = data[1];
-                led_buf[i][1] = data[2];
-                led_buf[i][2] = data[3];
-            }
-            break;
-
-        case CMD_KEYS: {
+        // Every LED in one report, one byte each as RGB332. Three bytes per LED
+        // would need 81 and the report holds 32; at a byte each all 27 fit with
+        // room to spare, so the host can paint anything it likes without a new
+        // opcode per effect. Colour depth is the price: 8 reds, 8 greens,
+        // 4 blues.
+        // A run of LEDs at full depth, three bytes each. Nine fit in a report,
+        // so the whole pad is three of them. Packed formats were tried and are
+        // not worth it: the host then has to reason about which colours are
+        // representable, and greys stop being grey.
+        case CMD_LEDS: {
             uint8_t offset = data[1];
             uint8_t count  = data[2];
-            // Three header bytes leave room for nine triples in a 32-byte
-            // report; anything beyond that would read past the buffer.
             if (count > (RAW_MSG_SIZE - 3) / 3) count = (RAW_MSG_SIZE - 3) / 3;
             for (uint8_t i = 0; i < count && (offset + i) < RGB_MATRIX_LED_COUNT; i++) {
                 led_buf[offset + i][0] = data[3 + i * 3];
                 led_buf[offset + i][1] = data[4 + i * 3];
                 led_buf[offset + i][2] = data[5 + i * 3];
-            }
-            break;
-        }
-
-        case CMD_BANDS:
-            render_bands(&data[1], data[4], &data[5]);
-            break;
-
-        // A whole frame in one report: a background wash plus a handful of
-        // per-LED overrides. Single-report so the renderer can never catch a
-        // half-applied frame -- two reports would let the matrix draw between
-        // them and flicker whatever the second one was going to fix up.
-        case CMD_FRAME: {
-            uint8_t count = data[4];
-            if (count > FRAME_MAX_OVERRIDES) count = FRAME_MAX_OVERRIDES;
-            for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) {
-                led_buf[i][0] = data[1];
-                led_buf[i][1] = data[2];
-                led_buf[i][2] = data[3];
-            }
-            for (uint8_t i = 0; i < count; i++) {
-                uint8_t led = data[5 + i * 4];
-                if (led >= RGB_MATRIX_LED_COUNT) continue;
-                led_buf[led][0] = data[6 + i * 4];
-                led_buf[led][1] = data[7 + i * 4];
-                led_buf[led][2] = data[8 + i * 4];
             }
             break;
         }

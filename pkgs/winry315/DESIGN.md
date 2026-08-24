@@ -22,8 +22,7 @@ unbound keycodes leak into the focused window.
 
 ## Wire protocol
 
-32-byte reports both directions, first byte is the opcode. This is the contract
-the single flash locks in, so unused opcodes ship in the firmware from day one.
+32-byte reports both directions, first byte is the opcode.
 
 Pad → host:
 
@@ -36,24 +35,25 @@ Host → pad:
 
 | Op | Payload | Meaning |
 |---|---|---|
-| `0x01` | `[1..3]`=rgb | solid fill (superseded by `0x05`) |
-| `0x02` | `[1]`=offset, `[2]`=count, `[3..]`=rgb triples | per-key chunk, ≤9/report (superseded by `0x05`) |
-| `0x03` | `[1..3]`=rgb, `[4]`=count, `[5..]`=levels | per-column bar graph |
+| `0x02` | `[1]`=offset, `[2]`=count, `[3..]`=rgb triples | a run of LEDs, ≤9 per report |
 | `0x04` | — | heartbeat |
-| `0x05` | `[1..3]`=wash rgb, `[4]`=count, `[5..]`=`(led, r, g, b)` × ≤6 | whole frame |
 
-**Use `0x05` for anything the host draws.** A frame has to arrive in one report:
-`raw_hid_receive` and `rgb_matrix_task` both run from QMK's main loop, so the
-matrix can render *between* two reports and briefly show a half-applied frame.
-Painting a wash with `0x01` and then patching indicators with `0x02` visibly
-flickers those indicators roughly one update in eight (reports land ~1–2ms
-apart against a ~16ms render interval).
+Two opcodes: *here is some of the picture*, and *I am alive*. The whole pad is
+three `0x02` reports.
 
-Raw pixels can't work — 27 LEDs × 3 bytes is 81, over the 32-byte report — so
-`0x05` sends a background wash plus up to six per-LED overrides, which is enough
-for a full bottom row of mode indicators. The daemon has a `const` assertion
-tying `MODE_SLOTS.len()` to that limit so adding a seventh indicator fails to
-compile rather than silently truncating.
+**Colours are sent at full depth, and that is worth three reports.** Packing all
+27 LEDs into one report needs a byte each; RGB332 was tried and every colour
+then has to be reasoned about — its red and green scales have 8 levels against
+blue's 4, they coincide only at 0 and 255, so grey is not representable and
+neutral covers come out tinted. Fixing that in the packing takes thresholds and
+search; not packing takes two more reports. The pad does not care and neither
+does USB.
+
+A run can be split across reports because the renderer eases toward its target a
+quarter of the gap per tick, so consecutive frames differ slightly and a
+half-applied update falls between two nearly identical pictures. (An earlier
+design painted a wash and then patched indicators over it, which *did* flicker
+about one update in eight — because those two reports disagreed sharply.)
 
 - Key indices 0–14 are the keys in reading order; 15/16/17 are the left/centre/
   right encoder switches, renumbered from the raw matrix columns so they line up
@@ -61,16 +61,150 @@ compile rather than silently truncating.
 - `0x04` is not optional: the host must talk at least every 2s or the pad
   decides the daemon is dead. A daemon that only sends on change will let the
   pad go grey while idle.
-- `0x03` bakes a little rendering policy into the firmware, accepted only
-  because it is 3× cheaper on the wire than `0x02` at audio frame rates.
+
+## Sound
+
+Captured from Spotify's own node over PipeWire, four log-spaced bands per
+channel, published as a latest value the renderer reads.
+
+- **The sample buffer holds exactly one window, never a queue.** Whatever
+  arrives is appended and anything that no longer fits is dropped off the front,
+  so every analysis is of the newest audio. Draining half a window per callback
+  and working through the rest in order puts the pad behind the music with no
+  way to catch up.
+- **Decay runs on the renderer's clock, not the audio thread's.** When playback
+  stops the capture callback simply stops firing, so levels left in the slot
+  stay lit -- the pad held its last frame for ten seconds after a pause.
+  Published levels carry an `Instant`; anything older than `AUDIO_TIMEOUT` is
+  read as silence and fades.
+- **Brightness follows what just arrived, not what is present.** Music has
+  energy in every band all the time, so a level display sits high and a kick
+  barely moves it -- the pad reads as mud. Each band's rise since the last look
+  is spectral flux, the standard onset detector; a hit produces a spike and a
+  held note produces nothing. Measure it on the real energy, *before* the gain
+  below: the gain makes every band use the whole range, so change measured
+  after it makes a kick's faint high-frequency click as large a rise as the
+  kick, and every hit flashes every row.
+  held note produces nothing. `LEVEL_FLOOR` keeps a fraction of plain level
+  underneath, because pure onset detection goes dark through a sustained chord.
+- **Levels are normalised against a rolling peak.** A fixed dB window maps all
+  ordinary music into the middle of the range, so the pad glowed at half
+  brightness and nothing punched. The peak rises instantly and forgets with a
+  2.5s half-life; `GAIN_FLOOR` stops silence being amplified into noise.
+- **That bus name is owned by bubbled-spotify's `xdg-dbus-proxy`, not Spotify.**
+  The `--dbus-own=org.mpris.MediaPlayer2.spotify` grant in
+  `pkgs/bubbled-spotify` is what makes the pad able to drive it. Tighten that
+  policy and the mode goes dead in a way that looks like a pad bug.
+- A missing session bus is not fatal: the daemon warns once and the pad still
+  works as a colour picker. Individual call failures (Spotify not running) go to
+  stderr and are dropped.
+- Both side knobs scrub, deliberately. Direction comes from the rotation, so the
+  knobs' identity only carries meaning on their clicks, where it selects
+  previous vs next track.
+
+## What each LED is for
+
+27 LEDs, two groups, from QMK's `initial_led_config`:
+
+| LEDs | group | role |
+|---|---|---|
+| 6–20 and 0–5 | the 5x4 grid: the keys, plus the knob row above them | the album cover, tilted by stereo |
+| 21–26 | underglow, two columns of three | a level meter per channel |
+
+The knob LEDs are the grid's top row rather than a separate strip: they sit
+directly above the keys, so they carry the top of the picture. Six of them over
+five columns, and by position LED 3 and LED 2 both fall nearest the middle, so
+`GRID` holds a *slice* per cell — usually one LED, once two.
+
+The underglow is three down each side against four frequency rows, so each
+position takes the nearest band. No stereo tilt there: the sides *are* the
+channels, and tilting them would say the same thing twice. A test asserts every
+LED belongs to exactly one group and that none is claimed twice.
+
+## The grid
+
+Album art lands on the 15 key LEDs; everything outside them takes the album's
+one dominant colour. Mode indicators are composited last, over the cover --
+knowing which mode you are in beats seeing every pixel.
+
+- **Blurhash, not a box average.** Averaging complementary colours gives grey,
+  and at 5x4 each cell would average ~30,000 pixels of a 640x640 cover. Blurhash
+  low-passes in *linear* light and its `punch` parameter restores the saturation
+  that band-limiting costs -- the same compensation Ambilight projects apply.
+  If covers still read washed, the fallback is per-cell palette assignment
+  against an `okolors` palette, where every cell is a real colour from the art
+  and mud is impossible by construction.
+- **The cover is square and the grid is 5:4**, so it is centre-cropped. Covers
+  overwhelmingly put their subject in the middle; text near the top or bottom
+  edge is lost.
+- **The grid is serpentine, and row 0 is the bottom.** `GRID[col][row]` with
+  columns alternating direction (`8,7,6` then `9,10,11`); there is no constant
+  stride, so any per-LED effect goes through the table. Images count rows
+  downward and the pad counts them upward, so anything drawn from an image has
+  to flip. A test checks the table against the LED positions in QMK's
+  `winry315.c`.
+- Colours ease a quarter of the gap per 30ms tick. The step is floored at one:
+  integer division stalls at a gap of 2 or 3 and would leave a colour
+  permanently just short of its target.
+
+## Getting colour out of the LEDs
+
+- **Undo sRGB gamma on the way out.** Colours are gamma encoded for a screen and
+  these LEDs are linear in duty cycle, so sending sRGB straight through lifts
+  every dark channel about tenfold — a saturated red's 40 emits 15.7% of full
+  light instead of 1.6%. That drags every colour toward white, and is why they
+  looked pale. `(c/255)^2.2` restores the saturation the picture had.
+- **Dim at the single output point**, so everything upstream keeps its full
+  range and only the wire carries the reduced one. Rounding matters: truncation
+  puts every dark colour at zero.
+- The driver is ws2812 — 8 bits per channel, no current control — so dimming
+  costs resolution and there is no hardware knob to use instead. `max_brightness`
+  in `keyboard.json` does not apply to us: it scales QMK's own effects, not
+  `rgb_matrix_set_color` writes from an indicator callback, so the pad was
+  running at full 255.
+
+## Album colour
+
+The Spotify mode's wash is the album's colour, fetched on its own thread and
+folded into state like any other input: `mpris:artUrl` from MPRIS metadata,
+fetched over HTTP, k-means in Oklab (`okolors`), one colour out. Until it lands
+— and whenever it fails — the mode falls back to its own green, so no part of
+the pad ever waits on the network.
+
+- Spotify's art URL is a content hash, identical for every track on an album,
+  so it doubles as the cache key. Fetched art is kept as JPEG under
+  `$XDG_CACHE_HOME/winry315-daemon/art/<hash>`, written to a `.part` file and
+  renamed so a crash cannot leave a torn image poisoning that album forever.
+  The image is cached rather than the extracted colour because the network is
+  the expensive half -- re-extracting after a tuning change is milliseconds and
+  needs no refetch. Only the URL's last path segment is used, and only when it
+  is short and alphanumeric, so a URL can never choose where we write.
+- `Properties.Get` answers with a variant *wrapping* the `a{sv}`, so metadata
+  needs one layer unwrapped before the dict is reachable. Deserialising straight
+  to a map fails with `got 'v', expected 'a{sv}'`.
+- **Judge colourfulness as chroma ÷ lightness, never chroma alone.** Oklab
+  chroma scales with lightness, so a deep saturated red measures 0.033 while a
+  pastel measures 0.165 — an absolute threshold keeps the pastel and discards
+  the red. Album art is mostly dark, so absolute chroma throws away precisely
+  the colours worth having. The ratio puts both real colours near 0.23 and
+  leaves greys near zero.
+- **Move lightness, keep saturation.** Lifting a colour into the LED band scales
+  its chroma by the same factor rather than clamping chroma to a floor. A dark
+  red becomes vivid because chroma scales with lightness; a white cover's
+  faintest tint stays faint. An unconditional chroma floor inflates that tint
+  into a colour the album does not have — which is why a white cover used to
+  light the pad vivid blue.
+- A cover with no colour in it keeps its grid; the ring falls back to what the
+  cover averages to. Dropping the album entirely would lose the picture as well
+  as the colour.
 
 ## Mode selection
 
 The bottom row of keys picks the mode, one key per mode, driven by a single
 table in the daemon so the key and its indicator LED cannot drift apart.
 
-Only colour mode exists so far. The rest of the row is reserved for the modes
-in INTENT.md.
+Colour (key 10) and Spotify (key 11) exist. The rest of the row is reserved
+for the modes in INTENT.md.
 
 ## Constraints that will bite
 
@@ -79,10 +213,18 @@ in INTENT.md.
   `LTO_ENABLE = yes` alone brings it back under (31644 → 22530). No custom
   toolchain needed.
 - `raw_hid_send` silently drops anything not exactly 32 bytes.
-- **The bottom row's LEDs are not contiguous.** Reading order gives keys 10–14,
-  but their LEDs are 8, 9, 14, 15, 20 (see the LED map in `winry315.c`). `0x02`
-  addresses a contiguous run, so painting that row means one report per key
-  rather than one chunk for the row.
+- **Liveness is its own protocol, on its own thread.** `0x04` pings every 500ms
+  from a dedicated thread; frames go out only when state changes. Deriving the
+  heartbeat from event traffic does not work: a knob held through a long sweep
+  keeps the channel busy, so an idle-timeout heartbeat never fires and the pad
+  hits its 2s cutoff and goes white mid-turn. Separating them also means a slow
+  D-Bus call cannot starve liveness. The write end is an `Arc<Mutex<File>>`
+  shared by the two.
+- **The LED map is not the key map.** Reading order gives keys 10–14, but their
+  LEDs are 8, 9, 14, 15, 20, and the grid is wired serpentine (see the LED map
+  in `winry315.c`). `0x06` sidesteps this by carrying every LED in index order,
+  but any host-side code that thinks in rows and columns has to go through the
+  `GRID` table.
 - QMK's raw HID reports are **unnumbered**, so hidraw writes are 33 bytes — a
   leading `0x00` then the payload. Reads are 32.
 - Flashing changes the USB product string (`dztech YD3xn15mx` → `Winry

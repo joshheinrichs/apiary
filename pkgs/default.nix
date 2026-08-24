@@ -26,6 +26,7 @@ rec {
   gaggimate = import ./gaggimate { inherit pkgs; };
   winry315 = import ./winry315 { inherit pkgs; };
   winry315-applicator = winry315.applicator;
+  winry315-daemon = winry315.daemon;
   crosspoint-reader = import ./crosspoint-reader { inherit pkgs; };
   slippi-dolphin = import ./slippi-dolphin { inherit pkgs; };
   steam = import ./steam { inherit pkgs; };

@@ -5,3 +5,10 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
+blurhash = "0.2.3"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+pipewire = { version = "0.10.1", features = ["v0_3_44"] }
+realfft = "3.5.0"
+ureq = "3.4.0"
+xdg = "2"
+zbus = "5.19.0"

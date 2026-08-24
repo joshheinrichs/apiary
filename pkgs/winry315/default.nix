@@ -63,6 +63,14 @@ let
       ];
     };
     cargoLock.lockFile = ./Cargo.lock;
+
+    # pipewire-rs generates bindings with bindgen and finds libpipewire via
+    # pkg-config.
+    nativeBuildInputs = with pkgs; [
+      pkg-config
+      rustPlatform.bindgenHook
+    ];
+    buildInputs = [ pkgs.pipewire ];
   };
 
   # Flashing is the stateful, privileged act of making the hardware match the
