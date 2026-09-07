@@ -12,6 +12,7 @@ let
     configuration = {
       imports = [
         ./configuration.nix
+        ./immich.nix
       ]
       ++ pkgs.lib.optional isIso "${pkgs.path}/nixos/modules/installer/cd-dvd/iso-image.nix";
       nix.nixPath = [ "pkgs=${pkgs.path}" ];
