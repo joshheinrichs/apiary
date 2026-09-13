@@ -2,10 +2,20 @@
 
 under construction
 
+## usage
+
+bootstrap apis
+
 ```bash
-nix run -f . desktop-system-applicator
-nix run -f . desktop-home-applicator
+nix-build -A apis
 ```
+
+```bash
+apis run desktop-system-applicator
+```
+
+`desktop-home-applicator` puts `apis` on `PATH`, so after the first run the
+`./result/bin/` prefix is no longer needed.
 
 ## goals
 

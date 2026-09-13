@@ -1,0 +1,11 @@
+[package]
+name = "apis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+nix-bindings-store = { git = "https://github.com/nixops4/nix-bindings-rust", rev = "75ebf1d790da2b6d3715854004505b92f0a9dc4e" }
+nix-bindings-expr = { git = "https://github.com/nixops4/nix-bindings-rust", rev = "75ebf1d790da2b6d3715854004505b92f0a9dc4e" }
+nix-bindings-util = { git = "https://github.com/nixops4/nix-bindings-rust", rev = "75ebf1d790da2b6d3715854004505b92f0a9dc4e" }

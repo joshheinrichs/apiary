@@ -1,6 +1,10 @@
+{
+  system ? builtins.currentSystem,
+}:
 let
   sources = import ./sources.nix;
   pkgs = import sources.nixpkgs-src {
+    inherit system;
     config.allowUnfreePredicate =
       pkg:
       builtins.elem (pkg.pname or pkg.name) [
