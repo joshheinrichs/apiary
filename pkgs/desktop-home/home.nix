@@ -106,12 +106,22 @@ let
     source = "${micSource}"
     command = [ "${apiary.sway}/bin/sway", "-d" ]
 
+    [seat.env]
+    TZ = "America/Regina"
+    GTK_THEME = "Adwaita:dark"
+    EDITOR = "${pkgs.neovim}/bin/nvim"
+
     [[seat]]
     name = "tv"
     connectors = [ "${tvMonitor.connector}" ]
     include = [ "${tvInputId}" ]
     sink = "${tvSink}"
     command = [ "${apiary.sway}/bin/sway", "-d", "-c", "${tvSwayConfig}" ]
+
+    [seat.env]
+    TZ = "America/Regina"
+    GTK_THEME = "Adwaita:dark"
+    EDITOR = "${pkgs.neovim}/bin/nvim"
   '';
 
   # The app launch pipeline: place apps in the apps slice.

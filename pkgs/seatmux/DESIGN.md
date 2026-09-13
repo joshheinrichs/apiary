@@ -311,6 +311,10 @@ leases derive from its master fd.
 | `PULSE_SINK` / `PULSE_SOURCE` | audio targets |
 | `WLR_LIBINPUT_NO_DEVICES=1` | start even with no input yet; devices arrive by hotplug |
 | `WAYLAND_DISPLAY` / `DISPLAY` | *removed* — either one makes wlroots nest instead of using DRM |
+| a seat's own `env` | whatever the config declares |
+
+A seat's `env` is applied *before* everything above, so the table wins: a seat
+cannot unset the lease fd or the seatd socket by declaring them.
 
 `WLR_DRM_LEASE_FD` is the one patched behaviour, and it lives in `pkgs/wlroots`
 (68 lines). Without it a child calls `wlr_session_find_gpus()` and opens *every*
@@ -327,6 +331,10 @@ exclude    = ["Logitech K400 Plus"]
 sink       = "alsa_output.usb-Native_Instruments_Komplete_Audio_6_…"
 source     = "mic-filter"
 command    = ["…/sway", "-d"]
+
+[seat.env]
+TZ        = "America/Regina"
+GTK_THEME = "Adwaita:dark"
 
 [[seat]]
 name       = "tv"
@@ -345,6 +353,11 @@ no config change; the TV includes, so nothing drifts onto it by accident. The TV
 seat has no `source` — there is no microphone at the couch.
 
 Commands are the compositor directly, with no `scoper` wrapper: see *Cgroups*.
+
+`env` is per seat and optional. It exists because session settings — timezone,
+GTK theme, editor — used to ride on the `wm` launcher, which seatmux bypasses by
+forking compositors itself. Both seats currently declare the same values; the
+point of the table is that they need not.
 
 Connector names, device names and sink names are instance specifics and live in
 `desktop-home`, fed from `desktop-devices` like the rest of the machine's

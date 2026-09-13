@@ -51,6 +51,10 @@ pub fn spawn(seat: &Seat, lease: OwnedFd, socket: &Path) -> Result<Spawned> {
     ]);
     command.arg(program).args(args);
 
+    // The seat's own environment goes on first: everything seatmux sets below is
+    // load-bearing for the lease, and a seat must not be able to override it.
+    command.envs(&seat.env);
+
     // wlr_backend_autocreate picks a nested Wayland or X11 backend when these
     // are set, and never reaches the DRM path. A stale value inherited from an
     // earlier session is enough to leave the monitors untouched with no error.

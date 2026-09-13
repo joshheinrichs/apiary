@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::device::Identity;
 use crate::proto::MAX_SEAT_LEN;
@@ -47,6 +47,9 @@ pub struct Seat {
     pub devices: DevicePolicy,
     pub sink: Option<String>,
     pub source: Option<String>,
+    /// Extra environment for the compositor. seatmux's own variables are applied
+    /// after these, so a seat cannot unset what the lease depends on.
+    pub env: BTreeMap<String, String>,
     pub command: Vec<String>,
 }
 
@@ -72,6 +75,8 @@ struct RawSeat {
     exclude: Vec<String>,
     sink: Option<String>,
     source: Option<String>,
+    #[serde(default)]
+    env: BTreeMap<String, String>,
     #[serde(default)]
     command: Vec<String>,
 }
@@ -143,6 +148,7 @@ impl Seat {
             devices,
             sink: raw.sink,
             source: raw.source,
+            env: raw.env,
             command: raw.command,
         })
     }
@@ -169,6 +175,7 @@ connectors = ["DP-1", "DP-2"]
 exclude    = ["046d:404d"]
 sink       = "komplete"
 source     = "mic-filter"
+env        = { TZ = "America/Regina" }
 command    = ["sway"]
 
 [[seat]]
@@ -194,6 +201,14 @@ command    = ["sway", "-c", "/tv.conf"]
         // No microphone at the couch.
         assert_eq!(tv.source, None);
         assert!(matches!(tv.devices, DevicePolicy::Include(_)));
+    }
+
+    #[test]
+    fn env_is_per_seat_and_optional() {
+        let config = Config::parse(DESK_AND_TV).unwrap();
+        assert_eq!(config.seats[0].env["TZ"], "America/Regina");
+        // A seat that declares none gets none, rather than its neighbour's.
+        assert!(config.seats[1].env.is_empty());
     }
 
     /// Real hardware: the K400 is the couch keyboard, the MX Master is the desk

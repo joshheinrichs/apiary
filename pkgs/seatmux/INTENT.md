@@ -8,6 +8,8 @@
 - Neither seat is privileged. Either compositor restarts without disturbing the
   other.
 - Each seat gets its own audio sink and source, decided when it starts.
+- Each seat gets its own environment too — timezone, theme, editor. Same on both
+  for now, but they should be able to differ.
 - Each seat gets its own cgroup, so a runaway game on the TV cannot starve or
   OOM the desk. seatmux makes them itself — it has to fork the compositors
   directly for the DRM lease to be inherited, so it owns their placement too.
