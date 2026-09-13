@@ -49,9 +49,30 @@ let
   tvAudioProfile = "output:hdmi-stereo-extra3";
   tvSink = "alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3";
 
+  # sources.xml is reconciled by the launcher on every start, so the library
+  # root is declared here. Content type and scraper stay Kodi's: they live in
+  # its database, not in any file we can build.
+  moviesDir = "${config.home.homeDirectory}/Videos/Movies";
+  kodi = apiary.kodi.override {
+    videoSources = [
+      {
+        name = "Movies";
+        path = "${moviesDir}/";
+      }
+    ];
+    settings = {
+      # Pick up new files on launch without blocking the UI on the scan.
+      "videolibrary.updateonstartup" = "true";
+      "videolibrary.backgroundupdate" = "true";
+    };
+  };
+
   # The TV compositor is a bare sway: no systemd session integration and no
   # environment import, both of which belong to the desk instance alone —
   # a second importer would overwrite its WAYLAND_DISPLAY and SWAYSOCK.
+  # Kodi is therefore exec'd by sway directly rather than through scoper: a
+  # systemd-run child of this seat would inherit neither WAYLAND_DISPLAY nor the
+  # audio environment seatmux sets, and would land on the desk's speakers.
   tvSwayConfig = pkgs.writeText "sway-tv.conf" ''
     output "${tvOutput}" mode 3840x2160@60Hz position 0 0 scale 2
 
@@ -60,6 +81,9 @@ let
     bindsym $mod+d exec ${pkgs.fuzzel}/bin/fuzzel
     bindsym $mod+Shift+q kill
     bindsym $mod+f fullscreen toggle
+    bindsym $mod+k exec ${kodi}/bin/kodi
+
+    for_window [app_id="Kodi"] fullscreen enable
 
     exec swaymsg 'workspace 1; layout tabbed'
   '';
@@ -195,6 +219,9 @@ in
     # '';
 
     ".nix-profile".source = config.home.path;
+
+    # Kodi's library root: the source is declared, so the directory has to exist.
+    "Videos/Movies/.keep".text = "";
   };
 
   home.language.base = "en_CA.UTF-8";

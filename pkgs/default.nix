@@ -29,6 +29,7 @@ rec {
     isIso = true;
   };
   gaggimate = import ./gaggimate { inherit pkgs; };
+  kodi = import ./kodi { inherit pkgs; };
   winry315 = import ./winry315 { inherit pkgs; };
   winry315-applicator = winry315.applicator;
   winry315-daemon = winry315.daemon;
