@@ -20,6 +20,56 @@ Keycodes were rejected as the transport: 24 inputs is past the spare F13–F24
 range, encoder deltas and per-key RGB don't map onto keycodes at all, and
 unbound keycodes leak into the focused window.
 
+## One module per mode
+
+`main.rs` is wiring only: open the pad, start the threads, run one loop that
+folds inputs into state and draws. Everything a mode does lives under
+`modes/`, and no mode can see another.
+
+| Module | Owns |
+|---|---|
+| `pad.rs` | finding the pad, the report format, gamma and dimming, the heartbeat |
+| `grid.rs` | which LED is where, and easing |
+| `audio.rs` | capturing one PipeWire node, and turning levels into light |
+| `board.rs` | what the pad is showing, against what is wanted |
+| `modes/mod.rs` | the `SLOTS` table and one exhaustive match per dispatch |
+| `modes/<name>` | that mode's state, picture, background threads and effects |
+
+Modes never merge state — each is folded on its own and only the active one is
+asked for anything. What they feed is a `Frame`: the picture wanted, plus the
+levels to scale it by. The board reconciles that against what the pad is
+actually showing and answers with the cells to send, or `None` when it is
+already showing them.
+
+    mode state ──► modes::frame ──► Board::reconcile ──► pad.show
+                   (+ indicators)    (ease, modulate, diff)
+
+A mode contributes a row to `SLOTS` — its key, its indicator LED, its colour —
+and then only what it needs: a `State` with `apply` and `cells`, an `Input` its
+own watcher sends, an `Action` its own `Effects` runs, a `Sources` for anything
+live it reads. Every dispatch in `modes/mod.rs` matches exhaustively on `Mode`,
+so the compiler names each place a new mode has to be wired and nothing else in
+the tree changes. Colour (key 10) and Spotify (key 11) exist; the rest of the
+bottom row is reserved for the modes in INTENT.md.
+
+- **A `Frame`'s two fields are the two rendering rules.** `cells` is eased
+  toward; `levels` scales the eased result and is never eased itself. INTENT
+  says colours ease and levels do not, so a mode that wants a hit to land
+  immediately says so with `levels` rather than moving its `cells`.
+- **The modulated frame is never fed back into the ease.** `Board` keeps the
+  eased picture and the sent picture apart; folding the scaled one back would
+  drag the cover toward black through every quiet passage and make it climb out
+  again on the next beat.
+- **Live inputs sit beside the state, not in it.** `State` is `Copy` and folded
+  from the channel; `Sources` holds the shared latest-value slots, so a frame
+  reads the newest value rather than folding a queue of stale ones.
+- **A watcher is handed only the means to announce its own input** — a closure
+  that wraps that mode's `Input` — rather than the channel itself.
+- **Every mode's `Sources` ticks, not just the active one.** Otherwise switching
+  back reveals a frozen frame from minutes ago.
+- The loop drains what has arrived and draws once per 30ms tick. Drawing per
+  input instead ties every ease and decay rate to how fast a knob is turned.
+
 ## Wire protocol
 
 32-byte reports both directions, first byte is the opcode.
@@ -84,9 +134,9 @@ channel, published as a latest value the renderer reads.
   held note produces nothing. Measure it on the real energy, *before* the gain
   below: the gain makes every band use the whole range, so change measured
   after it makes a kick's faint high-frequency click as large a rise as the
-  kick, and every hit flashes every row.
-  held note produces nothing. `LEVEL_FLOOR` keeps a fraction of plain level
-  underneath, because pure onset detection goes dark through a sustained chord.
+  kick, and every hit flashes every row. `LEVEL_FLOOR` keeps a fraction of
+  plain level underneath, because pure onset detection goes dark through a
+  sustained chord.
 - **Levels are normalised against a rolling peak.** A fixed dB window maps all
   ordinary music into the middle of the range, so the pad glowed at half
   brightness and nothing punched. The peak rises instantly and forgets with a
@@ -123,17 +173,16 @@ LED belongs to exactly one group and that none is claimed twice.
 
 ## The grid
 
-Album art lands on the 15 key LEDs; everything outside them takes the album's
-one dominant colour. Mode indicators are composited last, over the cover --
-knowing which mode you are in beats seeing every pixel.
+Album art fills all 21 grid LEDs -- the keys and the knob row above them. The
+underglow carries on from the outer column of whichever row each side LED sits
+beside, so the picture runs off the edges rather than stopping at them. Mode
+indicators are composited last, over the cover -- knowing which mode you are in
+beats seeing every pixel.
 
 - **Blurhash, not a box average.** Averaging complementary colours gives grey,
   and at 5x4 each cell would average ~30,000 pixels of a 640x640 cover. Blurhash
-  low-passes in *linear* light and its `punch` parameter restores the saturation
-  that band-limiting costs -- the same compensation Ambilight projects apply.
-  If covers still read washed, the fallback is per-cell palette assignment
-  against an `okolors` palette, where every cell is a real colour from the art
-  and mud is impossible by construction.
+  low-passes in *linear* light, and the gamma correction on the way to the LEDs
+  restores the saturation that band-limiting costs.
 - **The cover is square and the grid is 5:4**, so it is centre-cropped. Covers
   overwhelmingly put their subject in the middle; text near the top or bottom
   edge is lost.
@@ -163,13 +212,12 @@ knowing which mode you are in beats seeing every pixel.
   `rgb_matrix_set_color` writes from an indicator callback, so the pad was
   running at full 255.
 
-## Album colour
+## Album art
 
-The Spotify mode's wash is the album's colour, fetched on its own thread and
-folded into state like any other input: `mpris:artUrl` from MPRIS metadata,
-fetched over HTTP, k-means in Oklab (`okolors`), one colour out. Until it lands
-— and whenever it fails — the mode falls back to its own green, so no part of
-the pad ever waits on the network.
+The cover is fetched on its own thread and folded into state like any other
+input: `mpris:artUrl` from MPRIS metadata, fetched over HTTP, decoded and
+low-passed onto the grid. Until it lands — and whenever it fails — the mode
+falls back to its own green, so no part of the pad ever waits on the network.
 
 - Spotify's art URL is a content hash, identical for every track on an album,
   so it doubles as the cache key. Fetched art is kept as JPEG under
@@ -182,29 +230,14 @@ the pad ever waits on the network.
 - `Properties.Get` answers with a variant *wrapping* the `a{sv}`, so metadata
   needs one layer unwrapped before the dict is reachable. Deserialising straight
   to a map fails with `got 'v', expected 'a{sv}'`.
-- **Judge colourfulness as chroma ÷ lightness, never chroma alone.** Oklab
-  chroma scales with lightness, so a deep saturated red measures 0.033 while a
-  pastel measures 0.165 — an absolute threshold keeps the pastel and discards
-  the red. Album art is mostly dark, so absolute chroma throws away precisely
-  the colours worth having. The ratio puts both real colours near 0.23 and
-  leaves greys near zero.
-- **Move lightness, keep saturation.** Lifting a colour into the LED band scales
-  its chroma by the same factor rather than clamping chroma to a floor. A dark
-  red becomes vivid because chroma scales with lightness; a white cover's
-  faintest tint stays faint. An unconditional chroma floor inflates that tint
-  into a colour the album does not have — which is why a white cover used to
-  light the pad vivid blue.
-- A cover with no colour in it keeps its grid; the ring falls back to what the
-  cover averages to. Dropping the album entirely would lose the picture as well
-  as the colour.
-
-## Mode selection
-
-The bottom row of keys picks the mode, one key per mode, driven by a single
-table in the daemon so the key and its indicator LED cannot drift apart.
-
-Colour (key 10) and Spotify (key 11) exist. The rest of the row is reserved
-for the modes in INTENT.md.
+- The mode used to distil one dominant colour (k-means in Oklab, via
+  `okolors`) and wash the pad with it. Showing the cover across the grid
+  replaced that, and the dependency went with it. Two things that cost hours
+  then, if a single colour is ever wanted again: judge colourfulness as
+  **chroma ÷ lightness**, because Oklab chroma scales with lightness and an
+  absolute threshold keeps pastels while discarding deep saturated reds — and
+  lift a dark colour by **moving lightness, not clamping chroma to a floor**,
+  which is what used to light the pad vivid blue for a white cover.
 
 ## Constraints that will bite
 
@@ -222,8 +255,8 @@ for the modes in INTENT.md.
   shared by the two.
 - **The LED map is not the key map.** Reading order gives keys 10–14, but their
   LEDs are 8, 9, 14, 15, 20, and the grid is wired serpentine (see the LED map
-  in `winry315.c`). `0x06` sidesteps this by carrying every LED in index order,
-  but any host-side code that thinks in rows and columns has to go through the
+  in `winry315.c`). `0x02` sidesteps this by carrying LEDs in index order, but
+  any host-side code that thinks in rows and columns has to go through the
   `GRID` table.
 - QMK's raw HID reports are **unnumbered**, so hidraw writes are 33 bytes — a
   leading `0x00` then the payload. Reads are 32.

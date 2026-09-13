@@ -10,6 +10,10 @@ let
   gcAdapterId = lib.splitString ":" (apiary.desktop-devices.usbByName "WUP-028").identifier;
   gcAdapterVendor = builtins.elemAt gcAdapterId 0;
   gcAdapterProduct = builtins.elemAt gcAdapterId 1;
+
+  padId = lib.splitString ":" (apiary.desktop-devices.usbByName "Winry315").identifier;
+  padVendor = builtins.elemAt padId 0;
+  padProduct = builtins.elemAt padId 1;
 in
 {
   imports = [
@@ -259,10 +263,19 @@ in
   services.udisks2.enable = true;
 
   # GameCube controller adapter (Nintendo WUP-028): Slippi Dolphin opens it
-  # directly via libusb, so it needs a udev rule granting the active session user
-  # access. vid/pid come from the device-dumper manifest (see desktop-devices).
+  # directly via libusb, so it needs a udev rule granting the user access. vid/pid
+  # come from the device-dumper manifest (see desktop-devices). uaccess (grant to
+  # the active-seat session) proved unreliable here — the ACL didn't apply even
+  # with an active seat0 session — so pin deterministic group access too: GROUP
+  # "users" (josh is a member) + MODE 0660, independent of logind/session state.
+  # Winry315 macropad: the daemon talks to it over its raw HID interface, and
+  # the applicator flashes it while it is enumerated as the Atmel DFU
+  # bootloader -- two different identities, so two rules. The bootloader's is
+  # hand-typed because it only exists mid-flash, so the manifest never sees it.
   services.udev.extraRules = ''
-    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess"
+    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
+    KERNEL=="hidraw*", ATTRS{idVendor}=="${padVendor}", ATTRS{idProduct}=="${padProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
+    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff4", TAG+="uaccess", GROUP="users", MODE="0660"
   '';
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.josh = {

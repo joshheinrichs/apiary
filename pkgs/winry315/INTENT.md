@@ -23,6 +23,8 @@ precious.
 - **Monitor brightness** — on a knob.
 - **Spotify** *(built)* — knobs drive Spotify, pad shows the album flashing
   along to it. See below.
+- **Soundboard** — sounds on the upper keys, played into the mic that
+  goes into Discord.
 - **Volume** — global, on a knob.
 
 ## Spotify mode
@@ -55,3 +57,4 @@ whatever the system happens to be playing.
 - The underglow is a column of three down each side: the left column is the left
   channel, the right column the right. They *are* the channels, so nothing about
   panning applies to them.
+
