@@ -19,7 +19,10 @@ let
   deskAudioMode = "analog-surround-21";
   deskWidthLeft = (builtins.head deskMonitorLeft.detailed_timings).horiz_video;
 
-  dictate = apiary.dictate.override { target = apiary.mic-filter.name; };
+  # The echo-cancelled mic. A bare node name: the source is a module in the
+  # daemon now, so there is no package to ask for it.
+  micSource = "mic-filter";
+  dictate = apiary.dictate.override { target = micSource; };
 
   rtk-init =
     pkgs.runCommand "rtk-init"
@@ -100,7 +103,7 @@ let
     # The source is still declared, because the rule that makes mic-filter the
     # default only applies once WirePlumber reloads, and nothing in the apply
     # path makes it. Drop this once that is no longer true.
-    source = "${apiary.mic-filter.name}"
+    source = "${micSource}"
     command = [ "${apiary.sway}/bin/sway", "-d" ]
 
     [[seat]]
@@ -297,6 +300,66 @@ in
     Environment=GIO_EXTRA_MODULES=${pkgs.dconf.lib}/lib/gio/modules
   '';
 
+  # Virtual source "Microphone": the desk mic with speaker bleed subtracted
+  # against what the desk sink is playing. A module in the daemon rather than a
+  # standalone process -- it is pipewire's own code, so there is nothing to
+  # sandbox, and hosting it here means the node exists as soon as the graph
+  # does. The cost is that retuning it needs a daemon restart.
+  #
+  # monitor.mode taps the sink's monitor ports instead of publishing a virtual
+  # sink, so nothing about playback routing changes. target.object on the sink
+  # stream pins which sink is the reference rather than following the default.
+  #
+  # Mono output: the card captures 3-channel surround and everything downstream
+  # (the pitch chain, soundboard-mic) is mono, as the old filter chain's source
+  # was. The rate is pinned to the card's so the reference and the capture never
+  # end up on opposite sides of a resampler.
+  #
+  # No aec.args: the canceller is enabled unconditionally, so nothing here has
+  # to turn it on, and every other WebRTC stage is left at its default. The one
+  # stage that defaults off is gain_control -- enabling it amplified the
+  # cancellation residual until it was audible. Leave it alone.
+  xdg.configFile."pipewire/pipewire.conf.d/51-echo-cancel.conf" = {
+    text = ''
+    context.modules = [
+      {
+        name = libpipewire-module-echo-cancel
+        # nofail, because a context.modules entry is mandatory by default and
+        # a module that cannot connect takes the whole daemon down with it
+        # ("could not load mandatory module" -> "failed to create context").
+        # A missing mic is survivable; a dead pipewire takes every seat's audio.
+        flags = [ nofail ]
+        args = {
+          monitor.mode = true
+          audio.rate = 48000
+          audio.channels = 1
+          audio.position = [ MONO ]
+          capture.props = {
+            node.name = "capture.${micSource}"
+            node.passive = true
+          }
+          source.props = {
+            node.name = "${micSource}"
+            node.description = "Microphone"
+          }
+          sink.props = {
+            node.name = "${micSource}-reference"
+            node.passive = true
+            target.object = "${deskSink}"
+          }
+        }
+      }
+    ]
+    '';
+    # The daemon reads pipewire.conf.d only at startup, so a changed drop-in
+    # means nothing until it restarts. PartOf carries that restart on to
+    # pipewire-pulse, wireplumber and soundboard-mic, so this one line is the
+    # whole stack. Runs only when the rendered file actually differs.
+    onChange = ''
+      ${pkgs.systemd}/bin/systemctl --user restart pipewire.service || true
+    '';
+  };
+
   # set default sink/source via priority (soft default). the hard default
   # (wpctl set-default) is stateful, so it'd belong in home-applicator, not here.
   xdg.configFile."wireplumber/wireplumber.conf.d/51-desk-audio.conf".text = ''
@@ -338,12 +401,25 @@ in
     node.rules = [
       {
         matches = [
-          { node.name = "capture.${apiary.mic-filter.name}" }
+          { node.name = "capture.${micSource}" }
         ]
         actions = {
           update-props = {
             target.object = "alsa_input.${lib.removePrefix "alsa_card." deskAudio.device_name}.${deskAudioMode}"
             node.dont-fallback = true
+          }
+        }
+      }
+      # The desk mic *is* mic-filter, so it has to outrank the raw input that the
+      # card rule boosts to 10000. Otherwise the desk default source is the
+      # unfiltered hardware and only PulseAudio clients ever reach the filter.
+      {
+        matches = [
+          { node.name = "${micSource}" }
+        ]
+        actions = {
+          update-props = {
+            priority.session = 20000
           }
         }
       }
@@ -411,22 +487,6 @@ in
       };
       Service = {
         ExecStart = "${pkgs.wireplumber}/bin/wireplumber";
-        Restart = "on-failure";
-      };
-      Install = {
-        WantedBy = [ "default.target" ];
-      };
-    };
-
-    # Virtual source "DeepFilter Microphone" (noise suppression + gain);
-    # select it as the input device in Discord or pavucontrol.
-    mic-filter = {
-      Unit = {
-        After = [ "pipewire.service" ];
-        Requires = [ "pipewire.service" ];
-      };
-      Service = {
-        ExecStart = "${apiary.mic-filter}/bin/mic-filter";
         Restart = "on-failure";
       };
       Install = {

@@ -17,7 +17,6 @@ rec {
   sway = import ./sway { inherit pkgs wlroots; };
   seatmux = import ./seatmux { inherit pkgs; };
   scoper = import ./scoper { inherit pkgs; };
-  mic-filter = import ./mic-filter { inherit pkgs; };
   dictate = import ./dictate { inherit pkgs; };
   device-dumper = import ./device-dumper { inherit pkgs; };
   desktop-devices = import ./desktop-devices;
