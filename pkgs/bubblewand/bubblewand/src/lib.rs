@@ -487,6 +487,12 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         if let Ok(v) = env::var("PULSE_SERVER") {
             cmd.setenv("PULSE_SERVER", &v);
         }
+        if let Ok(v) = env::var("PULSE_SINK") {
+            cmd.setenv("PULSE_SINK", &v);
+        }
+        if let Ok(v) = env::var("PIPEWIRE_PROPS") {
+            cmd.setenv("PIPEWIRE_PROPS", &v);
+        }
     }
 
     // PipeWire
@@ -500,6 +506,9 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
             }
             let pw_sock = format!("{}/pipewire-0", xdg_runtime);
             cmd.bind_try(&pw_sock, &pw_sock);
+        }
+        if let Ok(v) = env::var("PIPEWIRE_PROPS") {
+            cmd.setenv("PIPEWIRE_PROPS", &v);
         }
     }
 
