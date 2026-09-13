@@ -6,6 +6,7 @@
 }:
 rec {
   apis = import ./apis { inherit pkgs; };
+  fm1ctl = import ./fm1ctl { inherit pkgs; };
   fuzzel-window-switcher = import ./fuzzel-window-switcher { inherit pkgs; };
   home-applicator = import ./home-applicator { inherit pkgs; };
   bubblewand = import ./bubblewand { inherit pkgs; };

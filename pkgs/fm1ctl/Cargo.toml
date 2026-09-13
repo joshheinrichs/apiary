@@ -1,0 +1,12 @@
+[package]
+name = "fm1ctl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alsa = "0.9"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+sha2 = "0.10"
+ureq = "3"
+xdg = "3"

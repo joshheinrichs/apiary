@@ -93,6 +93,7 @@ in
         --name=sway \
         -- ${pkgs.sway}/bin/sway "$@"
     '')
+    dexed
   ];
 
   # Home Manager is pretty good at managing dotfiles. The primary way to manage
