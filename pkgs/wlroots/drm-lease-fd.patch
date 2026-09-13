@@ -1,0 +1,109 @@
+diff --git a/backend/backend.c b/backend/backend.c
+index 3d84aa6..8369001 100644
+--- a/backend/backend.c
++++ b/backend/backend.c
+@@ -1,4 +1,5 @@
+ #include <assert.h>
++#include <limits.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
+@@ -234,6 +235,37 @@ static struct wlr_backend *attempt_headless_backend(struct wl_event_loop *loop)
+ 
+ static struct wlr_backend *attempt_drm_backend(struct wlr_backend *backend, struct wlr_session *session) {
+ #if WLR_HAS_DRM_BACKEND
++	// A lessee is handed a DRM lease fd by its parent and must not enumerate
++	// or touch any other GPU: doing so would fight the lessor for DRM master.
++	const char *lease_fd_str = getenv("WLR_DRM_LEASE_FD");
++	if (lease_fd_str != NULL) {
++		char *endptr;
++		long lease_fd = strtol(lease_fd_str, &endptr, 10);
++		if (endptr == lease_fd_str || *endptr != '\0' || lease_fd < 0 || lease_fd > INT_MAX) {
++			wlr_log(WLR_ERROR, "Invalid WLR_DRM_LEASE_FD: '%s'", lease_fd_str);
++			return NULL;
++		}
++
++		wlr_log(WLR_INFO, "Using leased DRM fd %ld, skipping GPU enumeration", lease_fd);
++
++		struct wlr_device *dev = wlr_session_adopt_fd(session, (int)lease_fd);
++		if (dev == NULL) {
++			wlr_log(WLR_ERROR, "Failed to adopt leased DRM fd");
++			return NULL;
++		}
++
++		struct wlr_backend *leased = wlr_drm_backend_create(session, dev, NULL);
++		if (leased == NULL) {
++			wlr_log(WLR_ERROR, "Failed to create DRM backend on leased fd");
++			return NULL;
++		}
++
++		wlr_multi_backend_add(backend, leased);
++		// Deliberately no drm_backend_monitor_create(): a lessee must never
++		// adopt GPUs that appear later.
++		return leased;
++	}
++
+ 	struct wlr_device *gpus[8];
+ 	ssize_t num_gpus = wlr_session_find_gpus(session, 8, gpus);
+ 	if (num_gpus < 0) {
+diff --git a/backend/session/session.c b/backend/session/session.c
+index 8687743..faf10c2 100644
+--- a/backend/session/session.c
++++ b/backend/session/session.c
+@@ -369,9 +369,35 @@ error:
+ 	return NULL;
+ }
+ 
++
++struct wlr_device *wlr_session_adopt_fd(struct wlr_session *session, int fd) {
++	struct wlr_device *dev = malloc(sizeof(*dev));
++	if (!dev) {
++		wlr_log_errno(WLR_ERROR, "Allocation failed");
++		return NULL;
++	}
++
++	struct stat st;
++	if (fstat(fd, &st) < 0) {
++		wlr_log_errno(WLR_ERROR, "Stat failed");
++		free(dev);
++		return NULL;
++	}
++
++	dev->fd = fd;
++	dev->dev = st.st_rdev;
++	// Not opened via libseat, so there is no device ID to close against.
++	dev->device_id = -1;
++	wl_signal_init(&dev->events.change);
++	wl_signal_init(&dev->events.remove);
++	wl_list_insert(&session->devices, &dev->link);
++
++	return dev;
++}
+ void wlr_session_close_file(struct wlr_session *session,
+ 		struct wlr_device *dev) {
+-	if (libseat_close_device(session->seat_handle, dev->device_id) == -1) {
++	if (dev->device_id != -1 &&
++			libseat_close_device(session->seat_handle, dev->device_id) == -1) {
+ 		wlr_log_errno(WLR_ERROR, "Failed to close device %d", dev->device_id);
+ 	}
+ 
+diff --git a/include/wlr/backend/session.h b/include/wlr/backend/session.h
+index a1ff0c3..cf75535 100644
+--- a/include/wlr/backend/session.h
++++ b/include/wlr/backend/session.h
+@@ -118,6 +118,15 @@ void wlr_session_destroy(struct wlr_session *session);
+ struct wlr_device *wlr_session_open_file(struct wlr_session *session,
+ 	const char *path);
+ 
++/*
++ * Adopts an already-open DRM file descriptor (typically a lease obtained from
++ * another DRM master and inherited across exec) as a session device.
++ *
++ * The fd is not opened via libseat, so the session does not own its lifetime
++ * beyond close(2). Used together with WLR_DRM_LEASE_FD.
++ */
++struct wlr_device *wlr_session_adopt_fd(struct wlr_session *session, int fd);
++
+ /*
+  * Closes a file previously opened with wlr_session_open_file().
+  */

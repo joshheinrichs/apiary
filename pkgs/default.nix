@@ -13,6 +13,9 @@ rec {
   bubbled-spotify = import ./bubbled-spotify { inherit pkgs bubblewand; };
   bubbled-discord = import ./bubbled-discord { inherit pkgs bubblewand; };
   bubbled-syncthing = import ./bubbled-syncthing { inherit pkgs bubblewand; };
+  wlroots = import ./wlroots { inherit pkgs; };
+  sway = import ./sway { inherit pkgs wlroots; };
+  seatmux = import ./seatmux { inherit pkgs; };
   scoper = import ./scoper { inherit pkgs; };
   mic-filter = import ./mic-filter { inherit pkgs; };
   dictate = import ./dictate { inherit pkgs; };

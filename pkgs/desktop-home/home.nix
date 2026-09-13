@@ -7,11 +7,18 @@
 }:
 
 let
-  monitorLG = apiary.desktop-devices.monitorById "112NTFA27619";
-  monitorASUS = apiary.desktop-devices.monitorById "0x00025AF7";
-  komplete = apiary.desktop-devices.audioById "4397123E";
-  kompleteMode = "analog-surround-21";
-  kompleteSource = "alsa_input.${lib.removePrefix "alsa_card." komplete.device_name}.${kompleteMode}";
+  # Sway's output identity string ("make model serial"); sway uses "Unknown"
+  # when the EDID carries no serial.
+  outputId = m: "${m.make} ${m.model} ${if m.serial == null then "Unknown" else m.serial}";
+
+  deskMonitorLeft = apiary.desktop-devices.monitorById "0x00025AF7";
+  deskOutputLeft = outputId deskMonitorLeft;
+  deskMonitorRight = apiary.desktop-devices.monitorById "112NTFA27619";
+  deskOutputRight = outputId deskMonitorRight;
+  deskAudio = apiary.desktop-devices.audioById "4397123E";
+  deskAudioMode = "analog-surround-21";
+  deskWidthLeft = (builtins.head deskMonitorLeft.detailed_timings).horiz_video;
+
   dictate = apiary.dictate.override { target = apiary.mic-filter.name; };
 
   rtk-init =
@@ -25,6 +32,64 @@ let
         rtk init -g --auto-patch
         cp -r $HOME/.claude $out
       '';
+
+  # --- seatmux: the TV as a second seat on the same GPU ----------------------
+  tvMonitor = apiary.desktop-devices.monitorByModel "55R617CA";
+  tvOutput = outputId tvMonitor;
+  # The couch keyboard-with-trackpad, matched by evdev name. Not vendor:product:
+  # it sits on a Logitech Unifying receiver, and udev reports the receiver's USB
+  # id for every device paired to it -- the MX Master on the desk included.
+  tvInput = apiary.desktop-devices.inputByName "Logitech K400 Plus";
+  tvInputId = tvInput.name;
+
+  deskSink = "alsa_output.${lib.removePrefix "alsa_card." deskAudio.device_name}.${deskAudioMode}";
+  # HDMI audio rides the dGPU's own PCI function, independent of the display
+  # side being leased. The TV is the card's *fourth* HDMI output (hdmi-output-3,
+  # ELD monitor_name 55R617CA); plain "hdmi-stereo" is output-0, the LG.
+  tvAudioProfile = "output:hdmi-stereo-extra3";
+  tvSink = "alsa_output.pci-0000_03_00.1.hdmi-stereo-extra3";
+
+  # The TV compositor is a bare sway: no systemd session integration and no
+  # environment import, both of which belong to the desk instance alone —
+  # a second importer would overwrite its WAYLAND_DISPLAY and SWAYSOCK.
+  tvSwayConfig = pkgs.writeText "sway-tv.conf" ''
+    output "${tvOutput}" mode 3840x2160@60Hz position 0 0 scale 2
+
+    set $mod Mod4
+    bindsym $mod+Return exec ${launch} ${pkgs.foot}/bin/foot
+    bindsym $mod+d exec ${pkgs.fuzzel}/bin/fuzzel
+    bindsym $mod+Shift+q kill
+    bindsym $mod+f fullscreen toggle
+
+    exec swaymsg 'workspace 1; layout tabbed'
+  '';
+
+  # Compositors are forked by seatmux directly: the lease fd is inherited across
+  # exec, and systemd-run (what scoper uses) would spawn them from the user
+  # manager in another process tree, where the fd cannot follow.
+  seatmuxConfig = pkgs.writeText "seatmux.toml" ''
+    [[seat]]
+    name = "desk"
+    connectors = [ "${deskMonitorLeft.connector}", "${deskMonitorRight.connector}" ]
+    exclude = [ "${tvInputId}" ]
+    # No sink: the desk sink already wins the default by priority, so it inherits.
+    # The source is still declared, because the rule that makes mic-filter the
+    # default only applies once WirePlumber reloads, and nothing in the apply
+    # path makes it. Drop this once that is no longer true.
+    source = "${apiary.mic-filter.name}"
+    command = [ "${apiary.sway}/bin/sway", "-d" ]
+
+    [[seat]]
+    name = "tv"
+    connectors = [ "${tvMonitor.connector}" ]
+    include = [ "${tvInputId}" ]
+    sink = "${tvSink}"
+    command = [ "${apiary.sway}/bin/sway", "-d", "-c", "${tvSwayConfig}" ]
+  '';
+
+  # The app launch pipeline: place apps in the apps slice.
+  launch = "${apiary.scoper}/bin/scoper --slice=apps --";
+
 in
 {
   # Home Manager needs a bit of information about you and the paths it should
@@ -84,6 +149,25 @@ in
     landrun
     bubblewrap
     rtk
+    (pkgs.writeShellScriptBin "seatmux" ''
+      # Only `start` gets the config, the logind backend and the journal. Every
+      # other word -- status, stop, or a typo -- goes straight through, so its
+      # answer lands on the terminal and a bare `seatmux` just prints usage.
+      if [ "''${1-}" != start ]; then
+        exec ${apiary.seatmux}/bin/seatmux "$@"
+      fi
+      shift
+
+      # Force the logind backend: falling through to libseat's builtin would open
+      # devices directly, and there are no uaccess ACLs on /dev/input, so every
+      # seat would come up with no keyboard or mouse.
+      export LIBSEAT_BACKEND=logind
+      # The VT goes dark and loses keyboard the moment the session is taken, so
+      # stderr on the console is unreadable. Send everything to the journal:
+      #   journalctl -t seatmux -b
+      exec ${pkgs.systemd}/bin/systemd-cat -t seatmux --stderr-priority=warning \
+        ${apiary.seatmux}/bin/seatmux start ${seatmuxConfig} "$@"
+    '')
     (pkgs.writeShellScriptBin "wm" ''
       export TZ="America/Regina"
       export GTK_THEME="Adwaita:dark"
@@ -128,12 +212,12 @@ in
       #   { command = "${pkgs.waybar}/bin/waybar"; }
       # ];
       menu = "fuzzel";
-      terminal = "${apiary.scoper}/bin/scoper --slice=apps -- ${pkgs.foot}/bin/foot";
+      terminal = "${launch} ${pkgs.foot}/bin/foot";
       output = {
-        "${monitorASUS.make} ${monitorASUS.model} ${monitorASUS.serial}".position = "0 0";
-        "${monitorLG.make} ${monitorLG.model} ${monitorLG.serial}" = {
+        "${deskOutputLeft}".position = "0 0";
+        "${deskOutputRight}" = {
           scale = "1.5";
-          position = "${toString (builtins.head monitorASUS.detailed_timings).horiz_video} 0";
+          position = "${toString deskWidthLeft} 0";
         };
       };
       keybindings = lib.mkOptionDefault {
@@ -145,9 +229,6 @@ in
         "--no-repeat ${modifier}+m" = "exec ${dictate}/bin/dictate start";
         "--release ${modifier}+m" = "exec ${dictate}/bin/dictate stop";
       };
-      # window.commands = [
-      #   { criteria = { class = ".*"; }; command = "move container to workspace 1, workspace 1"; }
-      # ];
       startup = [
         { command = "swaymsg 'workspace 1; layout tabbed'"; }
       ];
@@ -191,21 +272,34 @@ in
 
   # set default sink/source via priority (soft default). the hard default
   # (wpctl set-default) is stateful, so it'd belong in home-applicator, not here.
-  xdg.configFile."wireplumber/wireplumber.conf.d/51-komplete-audio-6.conf".text = ''
+  xdg.configFile."wireplumber/wireplumber.conf.d/51-desk-audio.conf".text = ''
     monitor.alsa.rules = [
       {
         matches = [
-          { device.name = "${komplete.device_name}" }
+          { device.name = "${deskAudio.device_name}" }
         ]
         actions = {
           update-props = {
-            device.profile = "output:${kompleteMode}+input:${kompleteMode}"
+            device.profile = "output:${deskAudioMode}+input:${deskAudioMode}"
+          }
+        }
+      }
+      # The TV hangs off the dGPU's fourth HDMI output, so pin that profile:
+      # the sink only exists while its profile is active, and the card's default
+      # ("hdmi-stereo") is output 0, which is the LG on DisplayPort.
+      {
+        matches = [
+          { device.name = "alsa_card.pci-0000_03_00.1" }
+        ]
+        actions = {
+          update-props = {
+            device.profile = "${tvAudioProfile}"
           }
         }
       }
       {
         matches = [
-          { api.alsa.card.name = "${komplete.product}" }
+          { api.alsa.card.name = "${deskAudio.product}" }
         ]
         actions = {
           update-props = {
@@ -221,7 +315,7 @@ in
         ]
         actions = {
           update-props = {
-            target.object = "${kompleteSource}"
+            target.object = "alsa_input.${lib.removePrefix "alsa_card." deskAudio.device_name}.${deskAudioMode}"
             node.dont-fallback = true
           }
         }
@@ -270,6 +364,7 @@ in
           "dbus.service"
         ];
         Requires = [ "pipewire.service" ];
+        PartOf = [ "pipewire.service" ];
         BindsTo = [ "dbus.service" ];
       };
       Service = {
@@ -285,6 +380,7 @@ in
       Unit = {
         After = [ "pipewire.service" ];
         Requires = [ "pipewire.service" ];
+        PartOf = [ "pipewire.service" ];
       };
       Service = {
         ExecStart = "${pkgs.wireplumber}/bin/wireplumber";
@@ -404,6 +500,11 @@ in
   programs.claude-code = {
     enable = true;
     settings.model = "opus";
+    settings.voiceEnabled = true;
+    settings.voice = {
+      enabled = true;
+      mode = "hold";
+    };
     settings.hooks.PreToolUse = [
       {
         matcher = "Bash";
@@ -499,7 +600,7 @@ in
     enable = true;
     settings = {
       main = {
-        launch-prefix = "${apiary.scoper}/bin/scoper --slice=apps";
+        launch-prefix = launch;
         horizontal-pad = 8;
         vertical-pad = 4;
         inner-pad = 0;
