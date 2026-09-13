@@ -6,6 +6,7 @@ let
       builtins.elem (pkg.pname or pkg.name) [
         "spotify"
         "discord"
+        "discord-unwrapped"
         "claude-code"
         "steam"
         "steam-original"
