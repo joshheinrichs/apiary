@@ -150,7 +150,7 @@ in
     apiary.steam
     keepassxc
     libsecret
-    gcr
+    gcr_4
     qbittorrent
     vlc
     obs-studio
