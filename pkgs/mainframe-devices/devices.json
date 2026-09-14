@@ -167,7 +167,7 @@
       },
       "detailed_timings": [
         {
-          "pixel_clock_hz": 297000000,
+          "pixel_clock_hz": 594000000,
           "horiz_video": 3840,
           "vert_video": 2160,
           "horiz_image_mm": 800,
@@ -175,9 +175,9 @@
           "interlaced": false
         },
         {
-          "pixel_clock_hz": 148500000,
-          "horiz_video": 1920,
-          "vert_video": 1080,
+          "pixel_clock_hz": 297000000,
+          "horiz_video": 3840,
+          "vert_video": 2160,
           "horiz_image_mm": 800,
           "vert_image_mm": 450,
           "interlaced": false
@@ -185,18 +185,18 @@
       ],
       "range_limits": [
         {
-          "min_vert_rate_hz": 23,
-          "max_vert_rate_hz": 76,
+          "min_vert_rate_hz": 24,
+          "max_vert_rate_hz": 75,
           "min_horiz_rate_hz": 15000,
-          "max_horiz_rate_hz": 81000,
-          "max_pixel_clock_hz": 340000000
+          "max_horiz_rate_hz": 135000,
+          "max_pixel_clock_hz": 600000000
         }
       ],
       "hdr": {
         "traditional_sdr": true,
         "traditional_hdr": false,
-        "pq": false,
-        "hlg": false,
+        "pq": true,
+        "hlg": true,
         "max_luminance": 0.0,
         "max_frame_avg_luminance": 0.0,
         "min_luminance": 0.0
@@ -212,7 +212,7 @@
           0.6230469
         ],
         "blue": [
-          0.14550781,
+          0.14648438,
           0.055664062
         ],
         "white": [
@@ -221,8 +221,8 @@
         ]
       },
       "colorimetry": {
-        "bt2020_rgb": false,
-        "bt2020_ycc": false,
+        "bt2020_rgb": true,
+        "bt2020_ycc": true,
         "bt2020_cycc": false,
         "st2113_rgb": false,
         "ictcp": false
@@ -340,6 +340,27 @@
         {
           "name": "pro-audio",
           "description": "Pro Audio"
+        }
+      ]
+    },
+    {
+      "serial": "Remote",
+      "vendor": "Nordic Semiconductor ASA",
+      "product": "BLE Remote",
+      "device_name": "alsa_card.usb-ZhenYe_Tech_BLE_Remote-00",
+      "bus": "usb",
+      "profiles": [
+        {
+          "name": "off",
+          "description": "Off"
+        },
+        {
+          "name": "pro-audio",
+          "description": "Pro Audio"
+        },
+        {
+          "name": "input:mono-fallback",
+          "description": "Mono Input"
         }
       ]
     },
@@ -535,6 +556,30 @@
       "product": 789,
       "bus": "usb",
       "uniq": null
+    },
+    {
+      "identifier": "6421:4097:ZhenYe_Tech_BLE_Remote",
+      "name": "ZhenYe Tech BLE Remote",
+      "vendor": 6421,
+      "product": 4097,
+      "bus": "usb",
+      "uniq": null
+    },
+    {
+      "identifier": "6421:4097:ZhenYe_Tech_BLE_Remote_Keyboard",
+      "name": "ZhenYe Tech BLE Remote Keyboard",
+      "vendor": 6421,
+      "product": 4097,
+      "bus": "usb",
+      "uniq": null
+    },
+    {
+      "identifier": "6421:4097:ZhenYe_Tech_BLE_Remote_Mouse",
+      "name": "ZhenYe Tech BLE Remote Mouse",
+      "vendor": 6421,
+      "product": 4097,
+      "bus": "usb",
+      "uniq": null
     }
   ],
   "usb": [
@@ -585,6 +630,14 @@
       "vendor": 6092,
       "product": 4097,
       "serial": "4397123E"
+    },
+    {
+      "identifier": "1915:1001",
+      "name": "BLE Remote",
+      "manufacturer": "ZhenYe Tech",
+      "vendor": 6421,
+      "product": 4097,
+      "serial": null
     },
     {
       "identifier": "f1f1:0315",
