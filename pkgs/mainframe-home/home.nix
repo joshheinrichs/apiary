@@ -39,11 +39,17 @@ let
   # --- seatmux: the TV as a second seat on the same GPU ----------------------
   tvMonitor = apiary.mainframe-devices.monitorByModel "55R617CA";
   tvOutput = outputId tvMonitor;
-  # The couch keyboard-with-trackpad, matched by evdev name. Not vendor:product:
-  # it sits on a Logitech Unifying receiver, and udev reports the receiver's USB
-  # id for every device paired to it -- the MX Master on the desk included.
-  tvInput = apiary.mainframe-devices.inputByName "Logitech K400 Plus";
-  tvInputId = tvInput.name;
+  # The couch inputs, matched by evdev name. Not vendor:product: the K400 Plus
+  # sits on a Logitech Unifying receiver, and udev reports the receiver's USB id
+  # for every device paired to it -- the MX Master on the desk included. The air
+  # mouse splits into three evdev nodes, each needing its own name.
+  tvInputIds = map (name: (apiary.mainframe-devices.inputByName name).name) [
+    "Logitech K400 Plus"
+    "ZhenYe Tech BLE Remote"
+    "ZhenYe Tech BLE Remote Keyboard"
+    "ZhenYe Tech BLE Remote Mouse"
+  ];
+  tomlList = xs: "[ ${lib.concatMapStringsSep ", " (x: ''"${x}"'') xs} ]";
 
   deskSink = "alsa_output.${lib.removePrefix "alsa_card." deskAudio.device_name}.${deskAudioMode}";
   # HDMI audio rides the dGPU's own PCI function, independent of the display
@@ -98,7 +104,7 @@ let
     [[seat]]
     name = "desk"
     connectors = [ "${deskMonitorLeft.connector}", "${deskMonitorRight.connector}" ]
-    exclude = [ "${tvInputId}" ]
+    exclude = ${tomlList tvInputIds}
     # No sink: the desk sink already wins the default by priority, so it inherits.
     # The source is still declared, because the rule that makes mic-filter the
     # default only applies once WirePlumber reloads, and nothing in the apply
@@ -114,7 +120,7 @@ let
     [[seat]]
     name = "tv"
     connectors = [ "${tvMonitor.connector}" ]
-    include = [ "${tvInputId}" ]
+    include = ${tomlList tvInputIds}
     sink = "${tvSink}"
     command = [ "${apiary.sway}/bin/sway", "-d", "-c", "${tvSwayConfig}" ]
 
