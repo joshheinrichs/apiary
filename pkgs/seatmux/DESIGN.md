@@ -17,7 +17,7 @@ without the other noticing, because neither owns the other's resources.
 ## Why leases
 
 The alternative — one compositor nesting another — was tried and abandoned (see
-`desktop-home/INTENT.md`). Nesting makes the parent own all input forever, so
+`mainframe-home/INTENT.md`). Nesting makes the parent own all input forever, so
 every grab, popup and shortcut-inhibitor becomes a special case, and the child
 is a Wayland client the parent has to positively identify. Leasing pushes the
 split into DRM, where the kernel enforces it: each child is a real DRM master
@@ -138,7 +138,7 @@ across reboots.
 Prefer the evdev name. `vendor:product` is actively wrong for anything on a
 Logitech Unifying receiver, where udev reports the receiver's USB id for every
 device paired to it; `ID_PATH` names a physical port, so it breaks if the
-receiver moves. The evdev name survives both, and is what `desktop-devices`
+receiver moves. The evdev name survives both, and is what `mainframe-devices`
 already records.
 
 Because both compositors enumerate everything, the desk asks for the TV's
@@ -360,7 +360,7 @@ forking compositors itself. Both seats currently declare the same values; the
 point of the table is that they need not.
 
 Connector names, device names and sink names are instance specifics and live in
-`desktop-home`, fed from `desktop-devices` like the rest of the machine's
+`mainframe-home`, fed from `mainframe-devices` like the rest of the machine's
 identity. The package itself stays generic.
 
 ## This machine

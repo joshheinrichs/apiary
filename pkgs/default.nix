@@ -19,11 +19,11 @@ rec {
   scoper = import ./scoper { inherit pkgs; };
   dictate = import ./dictate { inherit pkgs; };
   device-dumper = import ./device-dumper { inherit pkgs; };
-  desktop-devices = import ./desktop-devices;
-  desktop-system-applicator = import ./desktop-system-applicator {
+  mainframe-devices = import ./mainframe-devices;
+  mainframe-system-applicator = import ./mainframe-system-applicator {
     inherit pkgs nix-cachyos-kernel apiary;
   };
-  desktop-iso = import ./desktop-system-applicator {
+  mainframe-iso = import ./mainframe-system-applicator {
     inherit pkgs nix-cachyos-kernel apiary;
     isIso = true;
   };
@@ -35,8 +35,8 @@ rec {
   crosspoint-reader = import ./crosspoint-reader { inherit pkgs; };
   slippi-dolphin = import ./slippi-dolphin { inherit pkgs; };
   steam = import ./steam { inherit pkgs; };
-  desktop-home = import ./desktop-home { inherit pkgs home-manager apiary; };
-  desktop-home-applicator = pkgs.writeShellScriptBin "desktop-home-applicator" ''
-    exec ${home-applicator}/bin/home-applicator ${desktop-home}
+  mainframe-home = import ./mainframe-home { inherit pkgs home-manager apiary; };
+  mainframe-home-applicator = pkgs.writeShellScriptBin "mainframe-home-applicator" ''
+    exec ${home-applicator}/bin/home-applicator ${mainframe-home}
   '';
 }

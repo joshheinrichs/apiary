@@ -95,8 +95,8 @@ nom's live build tree. The CLI is the price of that output.
   `system = null` plus `nixpkgs.buildPlatform`/`hostPlatform`, never a `system`
   string, or eval-config defaults to `builtins.currentSystem` and dies under pure
   eval. `nixpkgs.pkgs` would conflict with the config's own overlays and
-  `allowUnfree` settings. See `pkgs/desktop-system-applicator/default.nix`.
+  `allowUnfree` settings. See `pkgs/mainframe-system-applicator/default.nix`.
 - **`apis` links libnixexpr from `nixVersions.latest`**, so a nixpkgs bump that
   moves the C API can break this package first. `nixVersions.nix_2_35` pins it.
-- **Known unfixed:** `desktop-iso` fails under pure eval only — grub's
+- **Known unfixed:** `mainframe-iso` fails under pure eval only — grub's
   `import-efisetjmp.patch` reported "not valid". It builds impurely.

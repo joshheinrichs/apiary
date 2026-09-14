@@ -7,11 +7,11 @@
 let
   # GameCube adapter vid/pid, sourced from the device-dumper manifest rather than
   # hand-typed. Its identifier is the udev-ready hex "vid:pid:serial".
-  gcAdapterId = lib.splitString ":" (apiary.desktop-devices.usbByName "WUP-028").identifier;
+  gcAdapterId = lib.splitString ":" (apiary.mainframe-devices.usbByName "WUP-028").identifier;
   gcAdapterVendor = builtins.elemAt gcAdapterId 0;
   gcAdapterProduct = builtins.elemAt gcAdapterId 1;
 
-  padId = lib.splitString ":" (apiary.desktop-devices.usbByName "Winry315").identifier;
+  padId = lib.splitString ":" (apiary.mainframe-devices.usbByName "Winry315").identifier;
   padVendor = builtins.elemAt padId 0;
   padProduct = builtins.elemAt padId 1;
 in
@@ -264,7 +264,7 @@ in
 
   # GameCube controller adapter (Nintendo WUP-028): Slippi Dolphin opens it
   # directly via libusb, so it needs a udev rule granting the user access. vid/pid
-  # come from the device-dumper manifest (see desktop-devices). uaccess (grant to
+  # come from the device-dumper manifest (see mainframe-devices). uaccess (grant to
   # the active-seat session) proved unreliable here — the ACL didn't apply even
   # with an active seat0 session — so pin deterministic group access too: GROUP
   # "users" (josh is a member) + MODE 0660, independent of logind/session state.

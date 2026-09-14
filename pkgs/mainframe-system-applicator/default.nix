@@ -11,7 +11,7 @@ let
     # handed, via nixpkgs.buildPlatform/hostPlatform below.
     system = null;
     # Make the apiary library available to the config modules (e.g.
-    # configuration.nix reads desktop-devices for the GC-adapter udev rule).
+    # configuration.nix reads mainframe-devices for the GC-adapter udev rule).
     specialArgs = { inherit apiary; };
     configuration = {
       imports = [

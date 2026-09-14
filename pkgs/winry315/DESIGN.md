@@ -267,7 +267,7 @@ falls back to its own green, so no part of the pad ever waits on the network.
   daemon can open `/dev/hidraw*` (root-only by default), and `03eb:2ff4` — the
   Atmel DFU bootloader the pad becomes while flashing — so the applicator does
   not need root either. Model both on the GameCube adapter rule in
-  `desktop-system-applicator`.
+  `mainframe-system-applicator`.
 - Bootloader entry: hold the top-left key while plugging in, the physical button
   on the back of the PCB, or hold top-left + press bottom-right (the keymap's
   `QK_BOOT`, so iterating doesn't need unplugging).

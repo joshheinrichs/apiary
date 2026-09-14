@@ -74,8 +74,8 @@ let
   };
 
   # Flashing is the stateful, privileged act of making the hardware match the
-  # built firmware -- the same relationship desktop-home-applicator has to
-  # desktop-home, hence the name.
+  # built firmware -- the same relationship mainframe-home-applicator has to
+  # mainframe-home, hence the name.
   applicator = pkgs.writeShellScriptBin "winry315-applicator" ''
     set -eu
     dfu=${pkgs.dfu-programmer}/bin/dfu-programmer

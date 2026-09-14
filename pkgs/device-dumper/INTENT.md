@@ -1,8 +1,8 @@
 # device-dumper — intent
 
-- Emit static hardware facts as JSON on stdout, for `pkgs/desktop-devices` to
+- Emit static hardware facts as JSON on stdout, for `pkgs/mainframe-devices` to
   consume (e.g. the monitor identity that keys the sway `output` config in
-  `desktop-home`).
+  `mainframe-home`).
 - **Scope: monitors + audio + input devices + raw USB.** A **manifest of static
   hardware facts** — explicitly *not* live state or anything that changes
   frequently.

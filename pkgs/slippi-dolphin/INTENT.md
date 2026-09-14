@@ -32,7 +32,7 @@
   (`UICommon.cpp`) prefers `portable.txt`, then `$DOLPHIN_EMU_USERPATH`, then
   `~/.dolphin-emu`, then this XDG default. Playback would use `playback-beta`.
 - It's a secret → never in the Nix store. For now placed by hand; eventual home
-  goal is a home-manager out-of-store symlink (in desktop-home), not this package.
+  goal is a home-manager out-of-store symlink (in mainframe-home), not this package.
 - The ISO (Melee NTSC 1.02) is likewise user-provided data, out of scope.
 
 ## Build notes (the non-obvious parts)

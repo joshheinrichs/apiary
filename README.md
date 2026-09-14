@@ -11,10 +11,10 @@ nix-build -A apis
 ```
 
 ```bash
-apis run desktop-system-applicator
+apis run mainframe-system-applicator
 ```
 
-`desktop-home-applicator` puts `apis` on `PATH`, so after the first run the
+`mainframe-home-applicator` puts `apis` on `PATH`, so after the first run the
 `./result/bin/` prefix is no longer needed.
 
 ## goals

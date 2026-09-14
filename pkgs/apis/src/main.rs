@@ -57,7 +57,7 @@ enum Cmd {
 
 #[derive(clap::Args)]
 struct Target {
-    /// Attribute path into the repo, e.g. `desktop-home-applicator` or `pkgs.foo.bar`.
+    /// Attribute path into the repo, e.g. `mainframe-home-applicator` or `pkgs.foo.bar`.
     attr: Option<String>,
     /// Raw Nix expression evaluated with `self` (the repo source) in scope.
     #[arg(short = 'e', long = "expr", conflicts_with = "attr")]

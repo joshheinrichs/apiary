@@ -11,11 +11,11 @@ let
   # when the EDID carries no serial.
   outputId = m: "${m.make} ${m.model} ${if m.serial == null then "Unknown" else m.serial}";
 
-  deskMonitorLeft = apiary.desktop-devices.monitorById "0x00025AF7";
+  deskMonitorLeft = apiary.mainframe-devices.monitorById "0x00025AF7";
   deskOutputLeft = outputId deskMonitorLeft;
-  deskMonitorRight = apiary.desktop-devices.monitorById "112NTFA27619";
+  deskMonitorRight = apiary.mainframe-devices.monitorById "112NTFA27619";
   deskOutputRight = outputId deskMonitorRight;
-  deskAudio = apiary.desktop-devices.audioById "4397123E";
+  deskAudio = apiary.mainframe-devices.audioById "4397123E";
   deskAudioMode = "analog-surround-21";
   deskWidthLeft = (builtins.head deskMonitorLeft.detailed_timings).horiz_video;
 
@@ -37,12 +37,12 @@ let
       '';
 
   # --- seatmux: the TV as a second seat on the same GPU ----------------------
-  tvMonitor = apiary.desktop-devices.monitorByModel "55R617CA";
+  tvMonitor = apiary.mainframe-devices.monitorByModel "55R617CA";
   tvOutput = outputId tvMonitor;
   # The couch keyboard-with-trackpad, matched by evdev name. Not vendor:product:
   # it sits on a Logitech Unifying receiver, and udev reports the receiver's USB
   # id for every device paired to it -- the MX Master on the desk included.
-  tvInput = apiary.desktop-devices.inputByName "Logitech K400 Plus";
+  tvInput = apiary.mainframe-devices.inputByName "Logitech K400 Plus";
   tvInputId = tvInput.name;
 
   deskSink = "alsa_output.${lib.removePrefix "alsa_card." deskAudio.device_name}.${deskAudioMode}";
@@ -295,7 +295,7 @@ in
       }
       ''
         dconf compile $out ${
-          pkgs.writeTextDir "00-desktop-home" ''
+          pkgs.writeTextDir "00-mainframe-home" ''
             [org/gnome/desktop/interface]
             color-scheme='prefer-dark'
           ''

@@ -15,7 +15,7 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Identity {
-    /// Lowercase hex, e.g. `046d:404d`. Matches desktop-devices' vendor/product.
+    /// Lowercase hex, e.g. `046d:404d`. Matches mainframe-devices' vendor/product.
     pub vendor_product: Option<String>,
     /// Physical port, e.g. `pci-0000:77:00.0-usb-0:1.3:1.2`.
     pub id_path: Option<String>,

@@ -31,10 +31,10 @@ let
 in
 {
   inherit (apiary)
-    desktop-system-applicator
-    desktop-home
-    desktop-home-applicator
-    desktop-iso
+    mainframe-system-applicator
+    mainframe-home
+    mainframe-home-applicator
+    mainframe-iso
     blog
     bubbled-syncthing
     gaggimate

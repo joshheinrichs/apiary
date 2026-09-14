@@ -5,7 +5,7 @@ let
     let
       matches = builtins.filter (x: x.${attr} == id) list;
     in
-    if matches == [ ] then throw "device ${id} not in desktop-devices" else builtins.head matches;
+    if matches == [ ] then throw "device ${id} not in mainframe-devices" else builtins.head matches;
   byId = byAttr "serial";
 in
 {
