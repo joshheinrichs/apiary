@@ -2,7 +2,7 @@
   # git ls-remote https://github.com/NixOS/nixpkgs nixos-unstable
   nixpkgs-src = builtins.fetchGit {
     url = "https://github.com/NixOS/nixpkgs";
-    rev = "eaad089433ca2bb662274377d33df3d0e51ef28b";
+    rev = "20b1ddd1aa5ace70c9468305030aa4f9ef79671b";
     ref = "nixos-unstable";
     shallow = true;
   };
@@ -16,7 +16,7 @@
   # git ls-remote https://github.com/nix-community/home-manager master
   home-manager-src = builtins.fetchGit {
     url = "https://github.com/nix-community/home-manager";
-    rev = "87b3c74df02a2b2e691a24f3c82774f48a70c1bd";
+    rev = "1944398834e2b9677ee6081e11e42c32d7c1eb5d";
     ref = "master";
     shallow = true;
   };
