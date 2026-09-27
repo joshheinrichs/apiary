@@ -5,9 +5,9 @@ let
 
   src = pkgs.fetchFromGitHub {
     owner = "jniebuhr";
-    repo  = "gaggimate";
-    rev   = "v${version}";
-    hash  = "sha256-Fe8CzFPa1XB3teIExF1gRAotNdsJGFbdZErT7LvuVec=";
+    repo = "gaggimate";
+    rev = "v${version}";
+    hash = "sha256-Fe8CzFPa1XB3teIExF1gRAotNdsJGFbdZErT7LvuVec=";
   };
 
   versionH = pkgs.writeText "version.h" ''
@@ -38,19 +38,29 @@ let
   };
 
   packages = import ./packages.nix { inherit pkgs; };
-  libs     = import ./libraries.nix { inherit pkgs; };
+  libs = import ./libraries.nix { inherit pkgs; };
 
   # Build a single library into a store path with .piopm (and library.json if
   # the source has no manifest), so PlatformIO treats it as already installed.
-  makeLib = l:
-    pkgs.runCommand (pkgs.lib.strings.sanitizeDerivationName l.name) {} ''
+  makeLib =
+    l:
+    pkgs.runCommand (pkgs.lib.strings.sanitizeDerivationName l.name) { } ''
       cp -rL ${l.src} $out
       chmod -R u+w $out
-      printf '%s' ${pkgs.lib.escapeShellArg (builtins.toJSON {
-        type = "library";
-        inherit (l) name version;
-        spec = { inherit (l) owner name; id = null; requirements = null; uri = null; };
-      })} > $out/.piopm
+      printf '%s' ${
+        pkgs.lib.escapeShellArg (
+          builtins.toJSON {
+            type = "library";
+            inherit (l) name version;
+            spec = {
+              inherit (l) owner name;
+              id = null;
+              requirements = null;
+              uri = null;
+            };
+          }
+        )
+      } > $out/.piopm
       if ! [ -f $out/library.json ] && \
          ! [ -f $out/library.properties ] && \
          ! [ -f $out/module.json ]; then
@@ -60,55 +70,208 @@ let
     '';
 
   # Produce a linkFarm whose entries match the .pio/libdeps/{env}/ layout.
-  libdepsFor = libs: pkgs.linkFarm "gaggimate-libdeps"
-    (map (l: { name = l.name; path = makeLib l; }) libs);
+  libdepsFor =
+    libs:
+    pkgs.linkFarm "gaggimate-libdeps" (
+      map (l: {
+        inherit (l) name;
+        path = makeLib l;
+      }) libs
+    );
 
   # Pre-assembled PLATFORMIO_CORE_DIR layout; copied and chmod'd in buildPhase.
   pioCoreDir = pkgs.linkFarm "gaggimate-pio-core" [
-    { name = "packages/toolchain-xtensa-esp32s3";     path = packages.toolchain-xtensa; }
-    { name = "packages/toolchain-riscv32-esp";        path = packages.toolchain-riscv32; }
-    { name = "packages/framework-arduinoespressif32"; path = packages.framework; }
-    { name = "packages/tool-esptoolpy";               path = packages.tool-esptoolpy; }
-    { name = "packages/tool-mkspiffs";                path = packages.tool-mkspiffs; }
-    { name = "packages/tool-scons";                   path = packages.tool-scons; }
-    { name = "platforms/espressif32";                 path = packages.platform; }
+    {
+      name = "packages/toolchain-xtensa-esp32s3";
+      path = packages.toolchain-xtensa;
+    }
+    {
+      name = "packages/toolchain-riscv32-esp";
+      path = packages.toolchain-riscv32;
+    }
+    {
+      name = "packages/framework-arduinoespressif32";
+      path = packages.framework;
+    }
+    {
+      name = "packages/tool-esptoolpy";
+      path = packages.tool-esptoolpy;
+    }
+    {
+      name = "packages/tool-mkspiffs";
+      path = packages.tool-mkspiffs;
+    }
+    {
+      name = "packages/tool-scons";
+      path = packages.tool-scons;
+    }
+    {
+      name = "platforms/espressif32";
+      path = packages.platform;
+    }
   ];
 
   displayLibs = with libs; [
-    { name = "AsyncTCP";               src = asyncTcp;           version = "3.4.9";  owner = "esp32async";        }
-    { name = "ESPAsyncWebServer";      src = espAsyncWebServer;  version = "3.9.1";  owner = "esp32async";        }
-    { name = "ArduinoJson";            src = arduinoJson;        version = "7.4.3";  owner = "bblanchon";         }
-    { name = "MQTT";                   src = mqtt;               version = "2.5.3";  owner = "256dpi";            }
-    { name = "NimBLE-Arduino";         src = nimBleArduino;      version = "1.4.3";  owner = "h2zero";            }
-    { name = "HomeSpan";               src = homeSpan;           version = "1.9.1";  owner = "homespan";          }
-    { name = "esp-arduino-ble-scales"; src = espArduinoBleScales; version = "0.0.0"; owner = "gaggimate";         }
-    { name = "ADS1X15";                src = ads1x15;            version = "0.5.4";  owner = "robtillaart";       }
-    { name = "MAX31855";               src = max31855;           version = "0.6.2";  owner = "robtillaart";       }
-    { name = "PCA9634";                src = pca9634;            version = "0.4.1";  owner = "robtillaart";       }
-    { name = "PSM";                    src = psm;                version = "0.0.0";  owner = "gaggimate";         }
-    { name = "PWFusion_VL53L3C";       src = pwFusionVL53L3C;    version = "0.0.0";  owner = "playingwithfusion"; }
-    { name = "VL53L0X";                src = vl53l0x;            version = "1.3.1";  owner = "pololu";            }
+    {
+      name = "AsyncTCP";
+      src = asyncTcp;
+      version = "3.4.9";
+      owner = "esp32async";
+    }
+    {
+      name = "ESPAsyncWebServer";
+      src = espAsyncWebServer;
+      version = "3.9.1";
+      owner = "esp32async";
+    }
+    {
+      name = "ArduinoJson";
+      src = arduinoJson;
+      version = "7.4.3";
+      owner = "bblanchon";
+    }
+    {
+      name = "MQTT";
+      src = mqtt;
+      version = "2.5.3";
+      owner = "256dpi";
+    }
+    {
+      name = "NimBLE-Arduino";
+      src = nimBleArduino;
+      version = "1.4.3";
+      owner = "h2zero";
+    }
+    {
+      name = "HomeSpan";
+      src = homeSpan;
+      version = "1.9.1";
+      owner = "homespan";
+    }
+    {
+      name = "esp-arduino-ble-scales";
+      src = espArduinoBleScales;
+      version = "0.0.0";
+      owner = "gaggimate";
+    }
+    {
+      name = "ADS1X15";
+      src = ads1x15;
+      version = "0.5.4";
+      owner = "robtillaart";
+    }
+    {
+      name = "MAX31855";
+      src = max31855;
+      version = "0.6.2";
+      owner = "robtillaart";
+    }
+    {
+      name = "PCA9634";
+      src = pca9634;
+      version = "0.4.1";
+      owner = "robtillaart";
+    }
+    {
+      name = "PSM";
+      src = psm;
+      version = "0.0.0";
+      owner = "gaggimate";
+    }
+    {
+      name = "PWFusion_VL53L3C";
+      src = pwFusionVL53L3C;
+      version = "0.0.0";
+      owner = "playingwithfusion";
+    }
+    {
+      name = "VL53L0X";
+      src = vl53l0x;
+      version = "1.3.1";
+      owner = "pololu";
+    }
   ];
 
   displayOnlyLibs = with libs; [
-    { name = "lvgl";                    src = lvgl;       version = "8.4.0";  owner = "lvgl";            }
-    { name = "TFT_eSPI";                src = tftEspi;    version = "2.5.43"; owner = "bodmer";          }
-    { name = "SensorLib";               src = sensorLib;  version = "0.2.3";  owner = "lewisxhe";        }
-    { name = "GFX Library for Arduino"; src = gfxLibrary; version = "1.5.9";  owner = "moononournation"; }
+    {
+      name = "lvgl";
+      src = lvgl;
+      version = "8.4.0";
+      owner = "lvgl";
+    }
+    {
+      name = "TFT_eSPI";
+      src = tftEspi;
+      version = "2.5.43";
+      owner = "bodmer";
+    }
+    {
+      name = "SensorLib";
+      src = sensorLib;
+      version = "0.2.3";
+      owner = "lewisxhe";
+    }
+    {
+      name = "GFX Library for Arduino";
+      src = gfxLibrary;
+      version = "1.5.9";
+      owner = "moononournation";
+    }
   ];
 
   controllerLibs = with libs; [
-    { name = "NimBLE-Arduino";   src = nimBleArduino;   version = "1.4.3";  owner = "h2zero";            }
-    { name = "ArduinoJson";      src = arduinoJson;     version = "7.4.3";  owner = "bblanchon";         }
-    { name = "ADS1X15";          src = ads1x15;         version = "0.5.4";  owner = "robtillaart";       }
-    { name = "MAX31855";         src = max31855;        version = "0.6.2";  owner = "robtillaart";       }
-    { name = "PCA9634";          src = pca9634;         version = "0.4.1";  owner = "robtillaart";       }
-    { name = "PSM";              src = psm;             version = "0.0.0";  owner = "gaggimate";         }
-    { name = "PWFusion_VL53L3C"; src = pwFusionVL53L3C; version = "0.0.0"; owner = "playingwithfusion"; }
-    { name = "VL53L0X";          src = vl53l0x;         version = "1.3.1";  owner = "pololu";            }
+    {
+      name = "NimBLE-Arduino";
+      src = nimBleArduino;
+      version = "1.4.3";
+      owner = "h2zero";
+    }
+    {
+      name = "ArduinoJson";
+      src = arduinoJson;
+      version = "7.4.3";
+      owner = "bblanchon";
+    }
+    {
+      name = "ADS1X15";
+      src = ads1x15;
+      version = "0.5.4";
+      owner = "robtillaart";
+    }
+    {
+      name = "MAX31855";
+      src = max31855;
+      version = "0.6.2";
+      owner = "robtillaart";
+    }
+    {
+      name = "PCA9634";
+      src = pca9634;
+      version = "0.4.1";
+      owner = "robtillaart";
+    }
+    {
+      name = "PSM";
+      src = psm;
+      version = "0.0.0";
+      owner = "gaggimate";
+    }
+    {
+      name = "PWFusion_VL53L3C";
+      src = pwFusionVL53L3C;
+      version = "0.0.0";
+      owner = "playingwithfusion";
+    }
+    {
+      name = "VL53L0X";
+      src = vl53l0x;
+      version = "1.3.1";
+      owner = "pololu";
+    }
   ];
 
-in pkgs.stdenv.mkDerivation {
+in
+pkgs.stdenv.mkDerivation {
   pname = "gaggimate";
   inherit version src;
 

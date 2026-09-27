@@ -29,8 +29,8 @@ impl Listener {
         std::fs::create_dir_all(dir)?;
         let path = dir.join(format!("{seat}.sock"));
         let _ = std::fs::remove_file(&path);
-        let listener = UnixListener::bind(&path)
-            .with_context(|| format!("binding {}", path.display()))?;
+        let listener =
+            UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))?;
         listener.set_nonblocking(true)?;
         Ok(Listener { path, listener })
     }
@@ -127,15 +127,17 @@ impl Client {
             }
             // VT belongs to seatmux. A child asking to switch is refused rather
             // than silently ignored, so the failure is visible in its log.
-            Request::SwitchSession { .. } => {
-                self.send(&Response::Error { code: nix::libc::EPERM })
-            }
+            Request::SwitchSession { .. } => self.send(&Response::Error {
+                code: nix::libc::EPERM,
+            }),
             Request::CloseDevice { device_id } => match self.devices.remove(&device_id) {
                 Some(device) => {
                     let _ = libseat.close_device(device);
                     self.send(&Response::DeviceClosed)
                 }
-                None => self.send(&Response::Error { code: nix::libc::EBADF }),
+                None => self.send(&Response::Error {
+                    code: nix::libc::EBADF,
+                }),
             },
             Request::OpenDevice { path } => self.open_device(&path, seat, libseat),
         }
@@ -154,7 +156,9 @@ impl Client {
         let identity = device::identify(node).unwrap_or_default();
 
         if !seat.devices.allows(&identity) {
-            return self.send(&Response::Error { code: nix::libc::EACCES });
+            return self.send(&Response::Error {
+                code: nix::libc::EACCES,
+            });
         }
 
         let device = match libseat.open_device(&node) {
@@ -192,8 +196,14 @@ impl Client {
         let iov = [std::io::IoSlice::new(&buf)];
         let fds = [fd];
         let cmsg = [ControlMessage::ScmRights(&fds)];
-        sendmsg::<()>(self.stream.as_raw_fd(), &iov, &cmsg, MsgFlags::empty(), None)
-            .context("passing device fd")?;
+        sendmsg::<()>(
+            self.stream.as_raw_fd(),
+            &iov,
+            &cmsg,
+            MsgFlags::empty(),
+            None,
+        )
+        .context("passing device fd")?;
         Ok(())
     }
 

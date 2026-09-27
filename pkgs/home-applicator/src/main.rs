@@ -36,8 +36,7 @@ fn remove_old_symlinks(old_home_files: &Path) -> Result<()> {
         let dest = home.join(rel);
         if let Ok(link_dest) = fs::read_link(&dest) {
             if link_dest == old_home_files.join(rel) {
-                fs::remove_file(&dest)
-                    .with_context(|| format!("removing {}", dest.display()))?;
+                fs::remove_file(&dest).with_context(|| format!("removing {}", dest.display()))?;
                 removed += 1;
             }
         }
@@ -107,7 +106,11 @@ fn reconcile_systemd(old_home_files: Option<&Path>, new_home_files: &Path) -> Re
     if !to_stop.is_empty() {
         eprintln!(
             "stopping: {}",
-            to_stop.iter().map(|u| u.as_str()).collect::<Vec<_>>().join(", ")
+            to_stop
+                .iter()
+                .map(|u| u.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         Command::new("systemctl")
             .args(["--user", "stop"])
@@ -131,7 +134,11 @@ fn reconcile_systemd(old_home_files: Option<&Path>, new_home_files: &Path) -> Re
     if !to_start.is_empty() {
         eprintln!(
             "starting: {}",
-            to_start.iter().map(|u| u.as_str()).collect::<Vec<_>>().join(", ")
+            to_start
+                .iter()
+                .map(|u| u.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         Command::new("systemctl")
             .args(["--user", "start"])

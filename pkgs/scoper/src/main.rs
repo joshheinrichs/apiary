@@ -6,7 +6,7 @@ use std::process::{self, Command};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use nix::sys::socket::{shutdown, Shutdown};
+use nix::sys::socket::{Shutdown, shutdown};
 use nix::unistd::dup2;
 use procfs::process::Process;
 
@@ -81,7 +81,11 @@ fn parent_slice_from_cgroup(path: &str) -> &str {
 fn journal_stream(identifier: &str, priority: u8) -> Result<RawFd> {
     let socket_path = xdg::BaseDirectories::new()
         .ok()
-        .and_then(|bd| bd.get_runtime_directory().ok().map(|p| p.join("systemd/journal/stdout")))
+        .and_then(|bd| {
+            bd.get_runtime_directory()
+                .ok()
+                .map(|p| p.join("systemd/journal/stdout"))
+        })
         .filter(|p| p.exists())
         .unwrap_or_else(|| "/run/systemd/journal/stdout".into());
 
@@ -124,12 +128,18 @@ mod tests {
 
     #[test]
     fn build_target_slice_with_parent() {
-        assert_eq!(build_target_slice("session-1.slice", "apps"), "session-1-apps.slice");
+        assert_eq!(
+            build_target_slice("session-1.slice", "apps"),
+            "session-1-apps.slice"
+        );
     }
 
     #[test]
     fn build_target_slice_with_parent_with_suffix() {
-        assert_eq!(build_target_slice("session-1.slice", "apps.slice"), "session-1-apps.slice");
+        assert_eq!(
+            build_target_slice("session-1.slice", "apps.slice"),
+            "session-1-apps.slice"
+        );
     }
 
     #[test]
@@ -165,7 +175,10 @@ mod tests {
     fn slice_base_prefixes_named_scope() {
         let slice_base = "session-1-apps";
         let name = "discord";
-        assert_eq!(format!("{slice_base}-{name}.scope"), "session-1-apps-discord.scope");
+        assert_eq!(
+            format!("{slice_base}-{name}.scope"),
+            "session-1-apps-discord.scope"
+        );
     }
 
     #[test]
@@ -187,7 +200,11 @@ fn main() -> Result<()> {
         Some(ref n) => format!("{slice_base}-{}.scope", n.trim_end_matches(".scope")),
         None => {
             let basename = args.cmd[0].split('/').last().unwrap_or(&args.cmd[0]);
-            format!("{slice_base}-app-{}-{}.scope", unit_escape(basename), process::id())
+            format!(
+                "{slice_base}-app-{}-{}.scope",
+                unit_escape(basename),
+                process::id()
+            )
         }
     };
 

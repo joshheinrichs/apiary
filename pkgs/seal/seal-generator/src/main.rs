@@ -77,7 +77,10 @@ fn main() {
 }
 
 fn run_exec(args: ExecArgs) -> std::io::Error {
-    const SEAL: &str = match option_env!("SEAL") { Some(s) => s, None => "seal" };
+    const SEAL: &str = match option_env!("SEAL") {
+        Some(s) => s,
+        None => "seal",
+    };
 
     let mut flags = args.sandbox.to_cli_args();
     if let Some(ref path_file) = args.ro_bind_file {
@@ -103,7 +106,10 @@ fn run_exec(args: ExecArgs) -> std::io::Error {
 }
 
 fn run_install(args: &InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
-    const SEAL: &str = match option_env!("SEAL") { Some(s) => s, None => "seal" };
+    const SEAL: &str = match option_env!("SEAL") {
+        Some(s) => s,
+        None => "seal",
+    };
     let seal_bin = PathBuf::from(SEAL);
     let mut flags = args.sandbox.to_cli_args();
 
@@ -219,7 +225,9 @@ fn patch_desktop(content: &str, src_bins: &[String], out_bin: &Path) -> String {
 
         if let Some(prefix) = prefix {
             let val = &line[prefix.len()..];
-            let exe_end = val.find(|c: char| c.is_ascii_whitespace()).unwrap_or(val.len());
+            let exe_end = val
+                .find(|c: char| c.is_ascii_whitespace())
+                .unwrap_or(val.len());
             let exe_token = &val[..exe_end];
             let rest = &val[exe_end..];
 
@@ -271,7 +279,10 @@ mod tests {
     #[test]
     fn full_path() {
         assert_eq!(
-            patch("Exec=/nix/store/abc-spotify/bin/spotify --flag\n", &["spotify"]),
+            patch(
+                "Exec=/nix/store/abc-spotify/bin/spotify --flag\n",
+                &["spotify"]
+            ),
             "Exec=/out/bin/spotify --flag\n",
         );
     }
@@ -318,10 +329,7 @@ mod tests {
 
     #[test]
     fn no_trailing_newline_preserved() {
-        assert_eq!(
-            patch("Exec=spotify", &["spotify"]),
-            "Exec=/out/bin/spotify",
-        );
+        assert_eq!(patch("Exec=spotify", &["spotify"]), "Exec=/out/bin/spotify",);
     }
 
     #[test]

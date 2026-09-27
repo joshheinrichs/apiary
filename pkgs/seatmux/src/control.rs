@@ -172,7 +172,9 @@ mod tests {
         let client = std::thread::spawn(move || {
             let mut stream = UnixStream::connect(&path).expect("connect");
             stream.write_all(b"reboot").expect("write");
-            stream.shutdown(std::net::Shutdown::Write).expect("shutdown");
+            stream
+                .shutdown(std::net::Shutdown::Write)
+                .expect("shutdown");
             let mut reply = String::new();
             stream.read_to_string(&mut reply).expect("read");
             reply

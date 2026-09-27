@@ -67,7 +67,13 @@ mod tests {
     #[test]
     fn keys_do_nothing_here() {
         let state = State { rgb: [1, 2, 3] };
-        assert_eq!(state.apply(PadEvent::Key { index: 4, pressed: true }), state);
+        assert_eq!(
+            state.apply(PadEvent::Key {
+                index: 4,
+                pressed: true
+            }),
+            state
+        );
     }
 
     #[test]

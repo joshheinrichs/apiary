@@ -19,7 +19,7 @@ let
       ];
   };
   nix-cachyos-kernel = import "${sources.nix-cachyos-kernel-src}/default.nix";
-  home-manager = import "${sources.home-manager-src}/lib" { lib = pkgs.lib; };
+  home-manager = import "${sources.home-manager-src}/lib" { inherit (pkgs) lib; };
   apiary = import ./pkgs {
     inherit
       pkgs

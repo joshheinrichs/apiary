@@ -137,7 +137,10 @@ pkgs.lib.makeOverridable (
     # Every Kodi setting is profile state, so the only declarative place to pin one
     # is its default in the install tree's schema. The skin is pinned here rather
     # than anywhere else for exactly that reason.
-    defaults = { "lookandfeel.skin" = arcticFuse.namespace; } // settings;
+    defaults = {
+      "lookandfeel.skin" = arcticFuse.namespace;
+    }
+    // settings;
 
     settingsFile = pkgs.runCommand "kodi-settings.xml" { } ''
       schema=${kodi}/share/kodi/system/settings/settings.xml
@@ -215,7 +218,15 @@ pkgs.lib.makeOverridable (
     '';
 
     pythonPath = lib.concatStringsSep ":" (
-      [ (with kodi.pythonPackages; makePythonPath [ pillow pycryptodome ]) ]
+      [
+        (
+          with kodi.pythonPackages;
+          makePythonPath [
+            pillow
+            pycryptodome
+          ]
+        )
+      ]
       ++ map (a: "${a}${kp.addonDir}/${a.namespace}/${a.pythonPath}") (
         lib.filter (a: a ? pythonPath) storeAddons
       )

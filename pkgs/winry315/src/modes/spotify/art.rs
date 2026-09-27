@@ -69,16 +69,16 @@ fn cache_dir() -> Option<PathBuf> {
 /// anything that is not, rather than letting a URL choose where we write.
 fn cache_key(url: &str) -> Option<&str> {
     let key = url.rsplit('/').next()?;
-    let sane = !key.is_empty()
-        && key.len() <= 64
-        && key.chars().all(|c| c.is_ascii_alphanumeric());
+    let sane = !key.is_empty() && key.len() <= 64 && key.chars().all(|c| c.is_ascii_alphanumeric());
     sane.then_some(key)
 }
 
 /// Fetch album art, preferring the cache. A cache that cannot be read or
 /// written is not an error: it just means going to the network.
 pub fn load_art(url: &str) -> Result<Vec<u8>> {
-    let cached = cache_dir().zip(cache_key(url)).map(|(dir, key)| dir.join(key));
+    let cached = cache_dir()
+        .zip(cache_key(url))
+        .map(|(dir, key)| dir.join(key));
     if let Some(path) = &cached
         && let Ok(bytes) = fs::read(path)
     {
@@ -96,7 +96,10 @@ pub fn load_art(url: &str) -> Result<Vec<u8>> {
         // Write then rename, so a crash mid-write cannot leave a torn JPEG that
         // would poison the cache for that album forever.
         let part = path.with_extension("part");
-        if fs::write(&part, &bytes).and_then(|_| fs::rename(&part, path)).is_err() {
+        if fs::write(&part, &bytes)
+            .and_then(|_| fs::rename(&part, path))
+            .is_err()
+        {
             eprintln!("winry315: could not cache album art");
         }
     }

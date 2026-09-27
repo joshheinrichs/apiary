@@ -43,7 +43,10 @@ impl Board {
             Some(levels) => audio::modulate(&shown, levels),
             None => shown,
         };
-        (Board { shown, sent: lit }, (lit != self.sent).then_some(lit))
+        (
+            Board { shown, sent: lit },
+            (lit != self.sent).then_some(lit),
+        )
     }
 }
 
@@ -53,11 +56,20 @@ mod tests {
     use crate::audio::{BANDS, SILENCE};
 
     fn plain(cells: Cells) -> Frame {
-        Frame { cells, levels: None }
+        Frame {
+            cells,
+            levels: None,
+        }
     }
 
     fn loud(cells: Cells) -> Frame {
-        Frame { cells, levels: Some(Levels { left: [1.0; BANDS], right: [1.0; BANDS] }) }
+        Frame {
+            cells,
+            levels: Some(Levels {
+                left: [1.0; BANDS],
+                right: [1.0; BANDS],
+            }),
+        }
     }
 
     #[test]
@@ -73,7 +85,10 @@ mod tests {
             updates += usize::from(update.is_some());
         }
         assert!(updates > 1, "the ease never moved");
-        assert!(updates < 128, "a settled board kept talking: {updates} updates");
+        assert!(
+            updates < 128,
+            "a settled board kept talking: {updates} updates"
+        );
 
         // And once settled it is showing exactly what was asked for.
         assert_eq!(board.sent, target);
@@ -91,7 +106,10 @@ mod tests {
         // Levels: full scale passes the eased picture through untouched, and
         // silence lands on the very next frame rather than fading.
         let (_, lit) = eased.clone().reconcile(loud(target));
-        let (_, dark) = eased.reconcile(Frame { cells: target, levels: Some(SILENCE) });
+        let (_, dark) = eased.reconcile(Frame {
+            cells: target,
+            levels: Some(SILENCE),
+        });
         assert_eq!(dark, Some([[0u8; 3]; LED_COUNT]), "silence was eased");
         assert!(lit.unwrap()[0][0] > 0, "full level darkened the picture");
     }
@@ -109,7 +127,10 @@ mod tests {
         assert_eq!(board.shown, target, "the ease did not settle");
 
         // Silence blacks the pad, but the picture underneath is untouched.
-        let (after, dark) = board.reconcile(Frame { cells: target, levels: Some(SILENCE) });
+        let (after, dark) = board.reconcile(Frame {
+            cells: target,
+            levels: Some(SILENCE),
+        });
         assert_eq!(dark, Some([[0u8; 3]; LED_COUNT]));
         assert_eq!(after.shown, target, "silence ate the picture");
         // So the next beat is instantly back at full, with nothing to climb.

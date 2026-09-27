@@ -80,13 +80,27 @@ mod tests {
         // Anything that disagrees with this puts the picture on its head.
         let position = |led: u8| -> (i32, i32) {
             match led {
-                0 => (35, 36), 1 => (21, 36), 2 => (8, 34),
-                3 => (-8, 34), 4 => (-21, 36), 5 => (-35, 36),
-                6 => (-38, 5), 7 => (-38, -14), 8 => (-38, -33),
-                9 => (-19, -33), 10 => (-19, -14), 11 => (-19, 5),
-                12 => (0, 5), 13 => (0, -14), 14 => (0, -33),
-                15 => (19, -33), 16 => (19, -14), 17 => (19, 5),
-                18 => (38, 5), 19 => (38, -14), 20 => (38, -33),
+                0 => (35, 36),
+                1 => (21, 36),
+                2 => (8, 34),
+                3 => (-8, 34),
+                4 => (-21, 36),
+                5 => (-35, 36),
+                6 => (-38, 5),
+                7 => (-38, -14),
+                8 => (-38, -33),
+                9 => (-19, -33),
+                10 => (-19, -14),
+                11 => (-19, 5),
+                12 => (0, 5),
+                13 => (0, -14),
+                14 => (0, -33),
+                15 => (19, -33),
+                16 => (19, -14),
+                17 => (19, 5),
+                18 => (38, 5),
+                19 => (38, -14),
+                20 => (38, -33),
                 other => panic!("LED {other} is not on the grid"),
             }
         };
@@ -94,7 +108,10 @@ mod tests {
         for (column, rows) in GRID.iter().enumerate() {
             // Rows climb: row 0 is the lowest, and the knob row is above them.
             let ys: Vec<i32> = rows.iter().map(|leds| position(leds[0]).1).collect();
-            assert!(ys.windows(2).all(|p| p[0] < p[1]), "column {column} runs down: {ys:?}");
+            assert!(
+                ys.windows(2).all(|p| p[0] < p[1]),
+                "column {column} runs down: {ys:?}"
+            );
             // Columns run left to right, and a cell's LEDs share its column.
             let x = position(rows[0][0]).0;
             assert!(x > previous_x, "column {column} is out of order");
@@ -127,7 +144,9 @@ mod tests {
 
     #[test]
     fn every_key_has_its_own_led_and_reading_order_is_the_right_way_up() {
-        let leds: Vec<u8> = (0..KEY_COUNT as u8).map(|k| led_for_key(k).unwrap()).collect();
+        let leds: Vec<u8> = (0..KEY_COUNT as u8)
+            .map(|k| led_for_key(k).unwrap())
+            .collect();
         assert_eq!(leds.len(), KEY_COUNT);
         assert_eq!(
             leds.iter().collect::<std::collections::BTreeSet<_>>().len(),

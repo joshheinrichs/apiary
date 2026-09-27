@@ -24,7 +24,7 @@ let
       nixpkgs.hostPlatform = pkgs.stdenv.hostPlatform;
     };
   };
-  system = nixos.system;
+  inherit (nixos) system;
 in
 if isIso then
   nixos.config.system.build.isoImage

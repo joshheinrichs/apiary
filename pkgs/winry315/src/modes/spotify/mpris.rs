@@ -28,7 +28,13 @@ impl Player {
         B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
     {
         self.0
-            .call_method(Some(MPRIS_DEST), MPRIS_PATH, Some(MPRIS_PLAYER), method, body)
+            .call_method(
+                Some(MPRIS_DEST),
+                MPRIS_PATH,
+                Some(MPRIS_PLAYER),
+                method,
+                body,
+            )
             .with_context(|| format!("MPRIS {method}"))?;
         Ok(())
     }

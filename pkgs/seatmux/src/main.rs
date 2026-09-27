@@ -19,8 +19,8 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use std::cell::Cell;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use std::os::fd::AsFd;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -87,7 +87,10 @@ fn parse_args(args: &[String]) -> Result<Invocation> {
     }
     Ok(Invocation::Start {
         config: config.clone(),
-        card: tail.first().cloned().unwrap_or_else(|| DEFAULT_CARD.to_string()),
+        card: tail
+            .first()
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_CARD.to_string()),
     })
 }
 
@@ -103,8 +106,8 @@ fn main() -> Result<()> {
 }
 
 fn start(config_path: String, card_path: String) -> Result<()> {
-    let text = std::fs::read_to_string(&config_path)
-        .with_context(|| format!("reading {config_path}"))?;
+    let text =
+        std::fs::read_to_string(&config_path).with_context(|| format!("reading {config_path}"))?;
     let config = Config::parse(&text)?;
 
     log("config parsed, taking control of the session");
@@ -153,7 +156,11 @@ fn start(config_path: String, card_path: String) -> Result<()> {
 
     log(&format!(
         "ready: libseat seat {udev_seat}, card {card_path}, seats: {}",
-        seats.iter().map(|s| s.config.name.as_str()).collect::<Vec<_>>().join(", ")
+        seats
+            .iter()
+            .map(|s| s.config.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
     ));
 
     let mut active = true;
@@ -205,7 +212,10 @@ fn wait(seat: &mut libseat::Seat, seats: &mut [SeatRuntime], control: &Control) 
         PollFd::new(control.as_fd(), PollFlags::POLLIN),
     ];
     for runtime in seats.iter() {
-        fds.push(PollFd::new(runtime.listener.listener.as_fd(), PollFlags::POLLIN));
+        fds.push(PollFd::new(
+            runtime.listener.listener.as_fd(),
+            PollFlags::POLLIN,
+        ));
     }
     // Borrowed separately so the client borrows do not overlap the listeners.
     let clients: Vec<_> = seats.iter().filter_map(|s| s.client.as_ref()).collect();
@@ -261,7 +271,11 @@ fn pump_clients(
 }
 
 fn relay_activation(seats: &mut [SeatRuntime], enabled: bool) {
-    let event = if enabled { Event::EnableSeat } else { Event::DisableSeat };
+    let event = if enabled {
+        Event::EnableSeat
+    } else {
+        Event::DisableSeat
+    };
     for runtime in seats.iter_mut() {
         if let Some(client) = runtime.client.as_mut() {
             let _ = client.send_event(event);
@@ -292,7 +306,11 @@ fn status(seats: &[SeatRuntime], card: &str, udev_seat: &str, active: bool) -> S
             "  {:8} {state}, connectors {}, compositor {}\n",
             runtime.config.name,
             runtime.config.connectors.join(" "),
-            if runtime.client.is_some() { "attached" } else { "not attached" },
+            if runtime.client.is_some() {
+                "attached"
+            } else {
+                "not attached"
+            },
         ));
     }
     out
@@ -326,7 +344,10 @@ fn signal_children(seats: &mut [SeatRuntime], sig: Signal) {
             continue;
         };
         let pid = Pid::from_raw(spawned.process.id() as i32);
-        log(&format!("sending {sig} to seat '{}' (pid {pid})", runtime.config.name));
+        log(&format!(
+            "sending {sig} to seat '{}' (pid {pid})",
+            runtime.config.name
+        ));
         let _ = signal::kill(pid, sig);
     }
 }
@@ -383,7 +404,10 @@ fn start_ready_seats(
     let probe_started = Instant::now();
     let resources = card.resources(true)?;
     if probe_started.elapsed() > Duration::from_millis(250) {
-        log(&format!("connector probe took {:?}", probe_started.elapsed()));
+        log(&format!(
+            "connector probe took {:?}",
+            probe_started.elapsed()
+        ));
     }
     // Objects already out on a lease must not be planned twice; the kernel
     // would refuse, and a running seat would lose its scanout.
@@ -398,11 +422,21 @@ fn start_ready_seats(
         let seen: Vec<String> = free
             .connectors
             .iter()
-            .map(|c| format!("{}={}", c.name, if c.connected { "connected" } else { "no" }))
+            .map(|c| {
+                format!(
+                    "{}={}",
+                    c.name,
+                    if c.connected { "connected" } else { "no" }
+                )
+            })
             .collect();
         let report = format!(
             "waiting for {}; connectors: {}",
-            candidates.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", "),
+            candidates
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
             seen.join(" ")
         );
         if *last_report != report {
@@ -438,7 +472,10 @@ fn start_ready_seats(
         let socket = seats[index].listener.path.clone();
         match child::spawn(&seats[index].config, lease.fd, &socket) {
             Ok(spawned) => {
-                log(&format!("seat '{}' started on {:?}", plan.seat, plan.connectors));
+                log(&format!(
+                    "seat '{}' started on {:?}",
+                    plan.seat, plan.connectors
+                ));
                 seats[index].child = Some(spawned);
                 seats[index].backoff = BACKOFF_MIN;
             }
@@ -469,8 +506,18 @@ fn leased_objects(seats: &[SeatRuntime]) -> HashSet<u32> {
 
 fn without(resources: &Resources, taken: &HashSet<u32>) -> Resources {
     Resources {
-        crtcs: resources.crtcs.iter().filter(|c| !taken.contains(&c.id)).cloned().collect(),
-        planes: resources.planes.iter().filter(|p| !taken.contains(&p.id)).cloned().collect(),
+        crtcs: resources
+            .crtcs
+            .iter()
+            .filter(|c| !taken.contains(&c.id))
+            .cloned()
+            .collect(),
+        planes: resources
+            .planes
+            .iter()
+            .filter(|p| !taken.contains(&p.id))
+            .cloned()
+            .collect(),
         connectors: resources
             .connectors
             .iter()
@@ -509,7 +556,10 @@ mod tests {
     fn starting_takes_a_config_and_defaults_the_card() {
         assert_eq!(
             parse_args(&args(&["start", "seatmux.toml"])).unwrap(),
-            Invocation::Start { config: "seatmux.toml".into(), card: DEFAULT_CARD.into() }
+            Invocation::Start {
+                config: "seatmux.toml".into(),
+                card: DEFAULT_CARD.into()
+            }
         );
     }
 
@@ -525,23 +575,43 @@ mod tests {
 
     #[test]
     fn control_words_are_commands_rather_than_config_paths() {
-        assert_eq!(parse_args(&args(&["status"])).unwrap(), Invocation::Control(Command::Status));
-        assert_eq!(parse_args(&args(&["stop"])).unwrap(), Invocation::Control(Command::Stop));
+        assert_eq!(
+            parse_args(&args(&["status"])).unwrap(),
+            Invocation::Control(Command::Status)
+        );
+        assert_eq!(
+            parse_args(&args(&["stop"])).unwrap(),
+            Invocation::Control(Command::Stop)
+        );
     }
 
     /// The session is taken only when it is asked for by name. A bare `seatmux`,
     /// or a config path on its own, must not start anything.
     #[test]
     fn nothing_starts_without_the_subcommand() {
-        for words in [vec![], vec!["seatmux.toml"], vec!["seatmux.toml", "/dev/dri/card0"]] {
-            assert!(parse_args(&args(&words)).is_err(), "{words:?} should not start seatmux");
+        for words in [
+            vec![],
+            vec!["seatmux.toml"],
+            vec!["seatmux.toml", "/dev/dri/card0"],
+        ] {
+            assert!(
+                parse_args(&args(&words)).is_err(),
+                "{words:?} should not start seatmux"
+            );
         }
     }
 
     #[test]
     fn too_much_to_do_is_refused() {
-        for words in [vec!["stop", "now"], vec!["start", "a.toml", "card", "extra"], vec!["start"]] {
-            assert!(parse_args(&args(&words)).is_err(), "{words:?} should not parse");
+        for words in [
+            vec!["stop", "now"],
+            vec!["start", "a.toml", "card", "extra"],
+            vec!["start"],
+        ] {
+            assert!(
+                parse_args(&args(&words)).is_err(),
+                "{words:?} should not parse"
+            );
         }
     }
 }

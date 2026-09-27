@@ -300,12 +300,10 @@ in
         nativeBuildInputs = [ pkgs.dconf ];
       }
       ''
-        dconf compile $out ${
-          pkgs.writeTextDir "00-mainframe-home" ''
-            [org/gnome/desktop/interface]
-            color-scheme='prefer-dark'
-          ''
-        }
+        dconf compile $out ${pkgs.writeTextDir "00-mainframe-home" ''
+          [org/gnome/desktop/interface]
+          color-scheme='prefer-dark'
+        ''}
       '';
 
   # GSettings only consults dconf in processes that load the dconf GIO
@@ -337,35 +335,35 @@ in
   # cancellation residual until it was audible. Leave it alone.
   xdg.configFile."pipewire/pipewire.conf.d/51-echo-cancel.conf" = {
     text = ''
-    context.modules = [
-      {
-        name = libpipewire-module-echo-cancel
-        # nofail, because a context.modules entry is mandatory by default and
-        # a module that cannot connect takes the whole daemon down with it
-        # ("could not load mandatory module" -> "failed to create context").
-        # A missing mic is survivable; a dead pipewire takes every seat's audio.
-        flags = [ nofail ]
-        args = {
-          monitor.mode = true
-          audio.rate = 48000
-          audio.channels = 1
-          audio.position = [ MONO ]
-          capture.props = {
-            node.name = "capture.${micSource}"
-            node.passive = true
-          }
-          source.props = {
-            node.name = "${micSource}"
-            node.description = "Microphone"
-          }
-          sink.props = {
-            node.name = "${micSource}-reference"
-            node.passive = true
-            target.object = "${deskSink}"
+      context.modules = [
+        {
+          name = libpipewire-module-echo-cancel
+          # nofail, because a context.modules entry is mandatory by default and
+          # a module that cannot connect takes the whole daemon down with it
+          # ("could not load mandatory module" -> "failed to create context").
+          # A missing mic is survivable; a dead pipewire takes every seat's audio.
+          flags = [ nofail ]
+          args = {
+            monitor.mode = true
+            audio.rate = 48000
+            audio.channels = 1
+            audio.position = [ MONO ]
+            capture.props = {
+              node.name = "capture.${micSource}"
+              node.passive = true
+            }
+            source.props = {
+              node.name = "${micSource}"
+              node.description = "Microphone"
+            }
+            sink.props = {
+              node.name = "${micSource}-reference"
+              node.passive = true
+              target.object = "${deskSink}"
+            }
           }
         }
-      }
-    ]
+      ]
     '';
     # The daemon reads pipewire.conf.d only at startup, so a changed drop-in
     # means nothing until it restarts. PartOf carries that restart on to

@@ -5,7 +5,7 @@
 }:
 let
   hm = home-manager.homeManagerConfiguration {
-    pkgs = pkgs;
+    inherit pkgs;
     extraSpecialArgs = { inherit apiary; };
     modules = [ ./home.nix ];
   };

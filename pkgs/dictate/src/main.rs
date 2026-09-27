@@ -18,7 +18,12 @@ use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::flag;
 
 mod sherpa {
-    #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case, dead_code)]
+    #![allow(
+        non_upper_case_globals,
+        non_camel_case_types,
+        non_snake_case,
+        dead_code
+    )]
     include!(concat!(env!("OUT_DIR"), "/sherpa.rs"));
 }
 
@@ -94,7 +99,11 @@ fn diff(have: &str, want: &str) -> Vec<Hunk> {
                 i += 1;
             }
         }
-        hunks.push(Hunk { at, del: i - at, ins });
+        hunks.push(Hunk {
+            at,
+            del: i - at,
+            ins,
+        });
     }
     hunks
 }
@@ -251,7 +260,10 @@ mod tests {
     #[test]
     fn diff_touches_only_the_changed_regions() {
         // Two separate word changes → two hunks; the middle is left alone.
-        assert_eq!(diff("the cat sat on the mat", "the dog sat on the rug").len(), 2);
+        assert_eq!(
+            diff("the cat sat on the mat", "the dog sat on the rug").len(),
+            2
+        );
     }
 
     #[test]
@@ -259,8 +271,16 @@ mod tests {
         let a = words_lower("The quick, brown fox.");
         let b = words_lower("the brown lazy fox");
         let d = word_diff(&a, &b);
-        let dropped: Vec<&str> = d.iter().filter(|(t, _)| *t == '-').map(|(_, w)| w.as_str()).collect();
-        let inserted: Vec<&str> = d.iter().filter(|(t, _)| *t == '+').map(|(_, w)| w.as_str()).collect();
+        let dropped: Vec<&str> = d
+            .iter()
+            .filter(|(t, _)| *t == '-')
+            .map(|(_, w)| w.as_str())
+            .collect();
+        let inserted: Vec<&str> = d
+            .iter()
+            .filter(|(t, _)| *t == '+')
+            .map(|(_, w)| w.as_str())
+            .collect();
         assert_eq!(dropped, ["quick"]);
         assert_eq!(inserted, ["lazy"]);
     }
@@ -330,7 +350,9 @@ impl Recognizer {
             let text = if result.is_null() || (*result).text.is_null() {
                 String::new()
             } else {
-                CStr::from_ptr((*result).text).to_string_lossy().into_owned()
+                CStr::from_ptr((*result).text)
+                    .to_string_lossy()
+                    .into_owned()
             };
             sherpa::SherpaOnnxDestroyOfflineRecognizerResult(result);
             sherpa::SherpaOnnxDestroyOfflineStream(stream);
@@ -573,8 +595,16 @@ fn replay(path: &str) -> Result<()> {
 
     let full = recognizer.decode(&samples);
     let wd = word_diff(&words_lower(&full), &words_lower(&field));
-    let dropped: Vec<&str> = wd.iter().filter(|(t, _)| *t == '-').map(|(_, w)| w.as_str()).collect();
-    let inserted: Vec<&str> = wd.iter().filter(|(t, _)| *t == '+').map(|(_, w)| w.as_str()).collect();
+    let dropped: Vec<&str> = wd
+        .iter()
+        .filter(|(t, _)| *t == '-')
+        .map(|(_, w)| w.as_str())
+        .collect();
+    let inserted: Vec<&str> = wd
+        .iter()
+        .filter(|(t, _)| *t == '+')
+        .map(|(_, w)| w.as_str())
+        .collect();
 
     eprintln!("streaming : {}", field.trim());
     eprintln!("full-file : {}", full.trim());
@@ -593,7 +623,11 @@ fn main() -> Result<()> {
         Some("replay") => replay(args.get(2).context("usage: dictate replay <wav>")?),
         Some("type") => {
             let mut kb = keyboard::Keyboard::new()?;
-            kb.type_text(args.get(2).map(String::as_str).unwrap_or("dictate keyboard test"))?;
+            kb.type_text(
+                args.get(2)
+                    .map(String::as_str)
+                    .unwrap_or("dictate keyboard test"),
+            )?;
             Ok(())
         }
         _ => bail!("usage: dictate <start|stop|record <wav>|replay <wav>>"),

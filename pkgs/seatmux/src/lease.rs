@@ -60,7 +60,8 @@ pub struct LeasePlan {
 impl LeasePlan {
     /// Flat object list in the form `drmModeCreateLease` wants.
     pub fn objects(&self) -> Vec<u32> {
-        let mut out = Vec::with_capacity(self.connectors.len() + self.crtcs.len() + self.planes.len());
+        let mut out =
+            Vec::with_capacity(self.connectors.len() + self.crtcs.len() + self.planes.len());
         out.extend_from_slice(&self.connectors);
         out.extend_from_slice(&self.crtcs);
         out.extend_from_slice(&self.planes);
@@ -99,7 +100,9 @@ pub fn plan_leases(resources: &Resources, seats: &[&Seat]) -> Result<Vec<LeasePl
                 .connectors
                 .iter()
                 .find(|c| &c.name == name)
-                .ok_or_else(|| anyhow::anyhow!("seat '{}': no such connector '{name}'", seat.name))?;
+                .ok_or_else(|| {
+                    anyhow::anyhow!("seat '{}': no such connector '{name}'", seat.name)
+                })?;
             wanted.push((seat.name.as_str(), connector));
         }
     }
@@ -189,23 +192,59 @@ mod tests {
         // Any CRTC can drive any of these connectors on amdgpu.
         let all = 0b1111;
         let connectors = vec![
-            Connector { id: 449, name: "DP-1".into(), connected: true, possible_crtcs: all },
-            Connector { id: 459, name: "DP-2".into(), connected: true, possible_crtcs: all },
-            Connector { id: 466, name: "HDMI-A-1".into(), connected: false, possible_crtcs: all },
-            Connector { id: 473, name: "HDMI-A-2".into(), connected: true, possible_crtcs: all },
+            Connector {
+                id: 449,
+                name: "DP-1".into(),
+                connected: true,
+                possible_crtcs: all,
+            },
+            Connector {
+                id: 459,
+                name: "DP-2".into(),
+                connected: true,
+                possible_crtcs: all,
+            },
+            Connector {
+                id: 466,
+                name: "HDMI-A-1".into(),
+                connected: false,
+                possible_crtcs: all,
+            },
+            Connector {
+                id: 473,
+                name: "HDMI-A-2".into(),
+                connected: true,
+                possible_crtcs: all,
+            },
         ];
 
         // One primary and one cursor per CRTC, plus spare overlays.
         let mut planes = Vec::new();
         for index in 0..4u32 {
-            planes.push(Plane { id: 100 + index, possible_crtcs: 1 << index, kind: PlaneKind::Primary });
-            planes.push(Plane { id: 200 + index, possible_crtcs: 1 << index, kind: PlaneKind::Cursor });
+            planes.push(Plane {
+                id: 100 + index,
+                possible_crtcs: 1 << index,
+                kind: PlaneKind::Primary,
+            });
+            planes.push(Plane {
+                id: 200 + index,
+                possible_crtcs: 1 << index,
+                kind: PlaneKind::Cursor,
+            });
         }
         for index in 0..3u32 {
-            planes.push(Plane { id: 300 + index, possible_crtcs: 1 << index, kind: PlaneKind::Overlay });
+            planes.push(Plane {
+                id: 300 + index,
+                possible_crtcs: 1 << index,
+                kind: PlaneKind::Overlay,
+            });
         }
 
-        Resources { crtcs, planes, connectors }
+        Resources {
+            crtcs,
+            planes,
+            connectors,
+        }
     }
 
     fn seats() -> Config {
@@ -272,7 +311,12 @@ command    = ["sway"]
     #[test]
     fn a_dark_connector_makes_only_its_own_seat_unready() {
         let mut resources = card1();
-        resources.connectors.iter_mut().find(|c| c.name == "HDMI-A-2").unwrap().connected = false;
+        resources
+            .connectors
+            .iter_mut()
+            .find(|c| c.name == "HDMI-A-2")
+            .unwrap()
+            .connected = false;
 
         let config = seats();
         let ready = ready_seats(&resources, &config.seats);
@@ -288,9 +332,19 @@ command    = ["sway"]
     fn constrained_connectors_are_placed_first() {
         let mut resources = card1();
         resources.crtcs.truncate(2);
-        resources.connectors.iter_mut().find(|c| c.name == "DP-1").unwrap().possible_crtcs = 0b11;
+        resources
+            .connectors
+            .iter_mut()
+            .find(|c| c.name == "DP-1")
+            .unwrap()
+            .possible_crtcs = 0b11;
         // HDMI-A-2 can only use CRTC index 0, which a naive walk gives to DP-1.
-        resources.connectors.iter_mut().find(|c| c.name == "HDMI-A-2").unwrap().possible_crtcs = 0b01;
+        resources
+            .connectors
+            .iter_mut()
+            .find(|c| c.name == "HDMI-A-2")
+            .unwrap()
+            .possible_crtcs = 0b01;
 
         let config = Config::parse(
             r#"
@@ -313,7 +367,11 @@ command = ["sway"]
         let plans = plan_leases(&resources, &ready).unwrap();
         let tv = plans.iter().find(|p| p.seat == "tv").unwrap();
         let desk = plans.iter().find(|p| p.seat == "desk").unwrap();
-        assert_eq!(tv.crtcs, [432], "constrained connector must get the only CRTC it can use");
+        assert_eq!(
+            tv.crtcs,
+            [432],
+            "constrained connector must get the only CRTC it can use"
+        );
         assert_eq!(desk.crtcs, [437]);
     }
 

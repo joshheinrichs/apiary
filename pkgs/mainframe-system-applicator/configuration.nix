@@ -2,7 +2,13 @@
 # your system.  Help is available in the configuration.nix(5) man page
 # and in the NixOS manual (accessible by running ‘nixos-help’).
 
-{ config, pkgs, lib, apiary, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  apiary,
+  ...
+}:
 
 let
   # GameCube adapter vid/pid, sourced from the device-dumper manifest rather than

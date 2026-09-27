@@ -54,7 +54,8 @@ pkgs.dolphin-emu.overrideAttrs (old: {
       vendored = [ "fmt" ];
       keep = p: !(builtins.elem (lib.getName p) vendored);
     in
-    (builtins.filter keep old.buildInputs) ++ (with pkgs; [
+    (builtins.filter keep old.buildInputs)
+    ++ (with pkgs; [
       soundtouch
       libsoundio
       portaudio

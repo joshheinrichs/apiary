@@ -25,7 +25,10 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------------------
 
 #[derive(Parser)]
-#[command(name = "anix", about = "Pure, sandboxed eval/build/run/repl rooted at the repo you're in")]
+#[command(
+    name = "anix",
+    about = "Pure, sandboxed eval/build/run/repl rooted at the repo you're in"
+)]
 struct Cli {
     /// Git revision to evaluate instead of the working tree: a branch, tag, sha,
     /// or anything `git rev-parse` takes (`HEAD~3`, `v1.2`).
@@ -72,16 +75,25 @@ struct Target {
 enum Locked {
     /// The working-tree snapshot already sitting in the store, pinned by the
     /// narHash we measured for it.
-    Snapshot { store_path: String, nar_hash: String },
+    Snapshot {
+        store_path: String,
+        nar_hash: String,
+    },
     /// A revision, pinned by rev + narHash — enough for `fetchGit` to reproduce
     /// it under pure eval, and what makes it materialize on first read.
-    Revision { root: String, rev: String, nar_hash: String },
+    Revision {
+        root: String,
+        rev: String,
+        nar_hash: String,
+    },
 }
 
 /// Escape a Nix string literal: backslash, quote, and the `${` interpolation
 /// opener are the only sequences that can break out.
 fn escape_nix_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"").replace("${", "\\${")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${")
 }
 
 /// Every path the snapshot must admit: the files themselves plus each ancestor
@@ -258,7 +270,15 @@ fn open_eval() -> Result<EvalState> {
 /// snapshot hash on every build and invalidate `self` against itself.
 fn git_files(root: &str) -> Result<Vec<String>> {
     let out = std::process::Command::new(git_bin())
-        .args(["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+        .args([
+            "-C",
+            root,
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
         .output()
         .context("running git ls-files")?;
     if !out.status.success() {
@@ -277,7 +297,14 @@ fn git_files(root: &str) -> Result<Vec<String>> {
 /// nothing shorter, and this is where a typo'd ref gets a readable error.
 fn resolve_rev(root: &str, git_ref: &str) -> Result<String> {
     let out = std::process::Command::new(git_bin())
-        .args(["-C", root, "rev-parse", "--verify", "--quiet", &format!("{git_ref}^{{commit}}")])
+        .args([
+            "-C",
+            root,
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{git_ref}^{{commit}}"),
+        ])
         .output()
         .context("running git rev-parse")?;
     if !out.status.success() {
@@ -319,12 +346,15 @@ fn probe(es: &mut EvalState, root: &str, source: &Source) -> Result<(Locked, Str
     let s = es.require_attrs_select(&v, "s")?;
     let pin = es.require_string(&pin)?;
     let locked = match source {
-        Source::WorkingTree(_) => {
-            Locked::Snapshot { nar_hash: nar_hash(&pin)?, store_path: pin }
-        }
-        Source::Revision(rev) => {
-            Locked::Revision { root: root.to_string(), rev: rev.clone(), nar_hash: pin }
-        }
+        Source::WorkingTree(_) => Locked::Snapshot {
+            nar_hash: nar_hash(&pin)?,
+            store_path: pin,
+        },
+        Source::Revision(rev) => Locked::Revision {
+            root: root.to_string(),
+            rev: rev.clone(),
+            nar_hash: pin,
+        },
     };
     Ok((locked, es.require_string(&s)?))
 }
@@ -488,7 +518,14 @@ fn realise(drv_path: &str) -> Result<()> {
 fn exec_repl(expr: &str) -> Result<()> {
     use std::os::unix::process::CommandExt as _;
     let err = std::process::Command::new(nix_bin())
-        .args(["repl", "--extra-experimental-features", "nix-command", "--pure-eval", "--expr", expr])
+        .args([
+            "repl",
+            "--extra-experimental-features",
+            "nix-command",
+            "--pure-eval",
+            "--expr",
+            expr,
+        ])
         .exec();
     Err(err).context("exec nix repl")
 }
@@ -572,7 +609,13 @@ mod tests {
     fn allowed_paths_includes_every_ancestor_directory() {
         let files = vec!["pkgs/anix/src/main.rs".to_string(), "README.md".to_string()];
         let allowed = allowed_paths(&files);
-        for want in ["pkgs", "pkgs/anix", "pkgs/anix/src", "pkgs/anix/src/main.rs", "README.md"] {
+        for want in [
+            "pkgs",
+            "pkgs/anix",
+            "pkgs/anix/src",
+            "pkgs/anix/src/main.rs",
+            "README.md",
+        ] {
             assert!(allowed.contains(want), "missing {want}");
         }
         assert!(!allowed.contains("pkgs/other"));
@@ -646,9 +689,15 @@ mod tests {
     #[test]
     fn pick_bin_prefers_name_then_sole_entry() {
         let entries = [PathBuf::from("/o/bin/a"), PathBuf::from("/o/bin/b")];
-        assert_eq!(pick_bin(&entries, Some("b")).unwrap(), PathBuf::from("/o/bin/b"));
+        assert_eq!(
+            pick_bin(&entries, Some("b")).unwrap(),
+            PathBuf::from("/o/bin/b")
+        );
         assert!(pick_bin(&entries, None).is_err());
-        assert_eq!(pick_bin(&entries[..1], None).unwrap(), PathBuf::from("/o/bin/a"));
+        assert_eq!(
+            pick_bin(&entries[..1], None).unwrap(),
+            PathBuf::from("/o/bin/a")
+        );
     }
 
     #[test]

@@ -118,13 +118,17 @@ impl Request {
                 if body.len() < 4 {
                     bail!("close_device body too short: {}", body.len());
                 }
-                Request::CloseDevice { device_id: i32_at(body, 0) }
+                Request::CloseDevice {
+                    device_id: i32_at(body, 0),
+                }
             }
             CLIENT_SWITCH_SESSION => {
                 if body.len() < 4 {
                     bail!("switch_session body too short: {}", body.len());
                 }
-                Request::SwitchSession { session: i32_at(body, 0) }
+                Request::SwitchSession {
+                    session: i32_at(body, 0),
+                }
             }
             CLIENT_OPEN_DEVICE => {
                 if body.len() < 2 {
@@ -139,7 +143,9 @@ impl Request {
                 }
                 // path_len counts the trailing NUL that libseat sends.
                 let bytes = &body[2..2 + path_len - 1];
-                Request::OpenDevice { path: String::from_utf8(bytes.to_vec())? }
+                Request::OpenDevice {
+                    path: String::from_utf8(bytes.to_vec())?,
+                }
             }
             other => bail!("unknown client opcode: {other}"),
         };
@@ -185,7 +191,10 @@ impl Response {
 /// leaves a client that connected to an already-active session waiting forever
 /// at "Waiting for a session to become active".
 pub fn open_seat_reply(seat_name: &str, active: bool) -> Vec<u8> {
-    let mut out = Response::SeatOpened { seat_name: seat_name.to_string() }.encode();
+    let mut out = Response::SeatOpened {
+        seat_name: seat_name.to_string(),
+    }
+    .encode();
     if active {
         out.extend_from_slice(&Event::EnableSeat.encode());
     }
@@ -270,7 +279,12 @@ mod tests {
     fn decodes_open_device_stripping_nul() {
         let buf = open_device_wire("/dev/input/event0");
         let (req, used) = Request::decode(&buf).unwrap().unwrap();
-        assert_eq!(req, Request::OpenDevice { path: "/dev/input/event0".into() });
+        assert_eq!(
+            req,
+            Request::OpenDevice {
+                path: "/dev/input/event0".into()
+            }
+        );
         assert_eq!(used, buf.len());
     }
 
@@ -297,7 +311,12 @@ mod tests {
         let (first, used) = Request::decode(&buf).unwrap().unwrap();
         assert_eq!(first, Request::OpenSeat);
         let (second, _) = Request::decode(&buf[used..]).unwrap().unwrap();
-        assert_eq!(second, Request::OpenDevice { path: "/dev/dri/card1".into() });
+        assert_eq!(
+            second,
+            Request::OpenDevice {
+                path: "/dev/dri/card1".into()
+            }
+        );
     }
 
     #[test]
@@ -333,7 +352,10 @@ mod tests {
 
     #[test]
     fn seat_opened_carries_nul_terminated_name() {
-        let buf = Response::SeatOpened { seat_name: "tv".into() }.encode();
+        let buf = Response::SeatOpened {
+            seat_name: "tv".into(),
+        }
+        .encode();
         assert_eq!(u16_at(&buf, 0), SERVER_SEAT_OPENED);
         assert_eq!(u16_at(&buf, 2) as usize, buf.len() - HEADER_LEN);
         assert_eq!(u16_at(&buf, 4), 3); // "tv" + NUL

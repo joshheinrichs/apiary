@@ -46,7 +46,10 @@ const LEVEL_FLOOR: f32 = 0.35;
 /// Levels older than this are not news any more: the sound has stopped.
 const AUDIO_TIMEOUT: Duration = Duration::from_millis(200);
 /// No sound at all.
-pub const SILENCE: Levels = Levels { left: [0.0; BANDS], right: [0.0; BANDS] };
+pub const SILENCE: Levels = Levels {
+    left: [0.0; BANDS],
+    right: [0.0; BANDS],
+};
 
 /// What the sound is doing, per channel.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -92,7 +95,9 @@ fn onsets(previous: Levels, now: Levels) -> Levels {
 fn punch(onsets: Levels, level: Levels) -> Levels {
     let mix = |hit: [f32; BANDS], present: [f32; BANDS]| -> [f32; BANDS] {
         std::array::from_fn(|b| {
-            (hit[b] * FLUX_GAIN).max(present[b] * LEVEL_FLOOR).clamp(0.0, 1.0)
+            (hit[b] * FLUX_GAIN)
+                .max(present[b] * LEVEL_FLOOR)
+                .clamp(0.0, 1.0)
         })
     };
     Levels {
@@ -332,7 +337,11 @@ fn absorb(state: &mut Listener, samples: &[u8], channels: usize) {
 
     // Show what just arrived over a floor of what is merely playing.
     let lit = punch(hit, present);
-    state.levels = follow(state.levels, lit, survives(since_last, RELEASE_HALF_LIFE_MS));
+    state.levels = follow(
+        state.levels,
+        lit,
+        survives(since_last, RELEASE_HALF_LIFE_MS),
+    );
     if let Ok(mut out) = state.published.lock() {
         *out = Some((state.levels, Instant::now()));
     }
@@ -380,7 +389,9 @@ fn capture(target: &str, published: Arc<Mutex<Option<(Levels, Instant)>>>) -> Re
             };
             let channels = state.format.channels() as usize;
             let datas = buffer.datas_mut();
-            let Some(data) = datas.first_mut() else { return };
+            let Some(data) = datas.first_mut() else {
+                return;
+            };
             let size = data.chunk().size() as usize;
             if let Some(samples) = data.data() {
                 absorb(state, &samples[..size.min(samples.len())], channels);
@@ -428,7 +439,10 @@ mod tests {
     }
 
     fn level(all: f32) -> Levels {
-        Levels { left: [all; BANDS], right: [all; BANDS] }
+        Levels {
+            left: [all; BANDS],
+            right: [all; BANDS],
+        }
     }
 
     #[test]
@@ -436,14 +450,19 @@ mod tests {
         let rate = 48_000.0;
         let brightest = |hz: f32| {
             let levels = spectrum_levels(&tone(hz, rate), rate);
-            (0..BANDS).max_by(|a, b| levels[*a].total_cmp(&levels[*b])).unwrap()
+            (0..BANDS)
+                .max_by(|a, b| levels[*a].total_cmp(&levels[*b]))
+                .unwrap()
         };
         // Rising pitch never moves down the pad, and spans it end to end.
         let climb: Vec<usize> = [40.0, 200.0, 800.0, 3000.0, 10_000.0]
             .iter()
             .map(|hz| brightest(*hz))
             .collect();
-        assert!(climb.windows(2).all(|p| p[0] <= p[1]), "pitch fell: {climb:?}");
+        assert!(
+            climb.windows(2).all(|p| p[0] <= p[1]),
+            "pitch fell: {climb:?}"
+        );
         assert_eq!(climb[0], 0, "the lowest tone belongs at the bottom");
         assert_eq!(*climb.last().unwrap(), BANDS - 1, "the highest at the top");
 
@@ -478,7 +497,10 @@ mod tests {
         assert_eq!(follow(level(0.1), level(0.9), step), level(0.9));
         // Letting go does not: the level falls over many frames.
         let mut now = follow(level(0.9), SILENCE, step);
-        assert!(now.left[0] > 0.0 && now.left[0] < 0.9, "fell to {now:?} at once");
+        assert!(
+            now.left[0] > 0.0 && now.left[0] < 0.9,
+            "fell to {now:?} at once"
+        );
         for _ in 0..(2_000.0 / QUANTUM_MS) as usize {
             now = follow(now, SILENCE, step);
         }
@@ -495,7 +517,10 @@ mod tests {
             for _ in 0..(RELEASE_HALF_LIFE_MS / cadence).round() as usize {
                 level *= survives(cadence, RELEASE_HALF_LIFE_MS);
             }
-            assert!((level - 0.5).abs() < 0.03, "cadence {cadence} landed at {level}");
+            assert!(
+                (level - 0.5).abs() < 0.03,
+                "cadence {cadence} landed at {level}"
+            );
         }
     }
 
@@ -510,7 +535,11 @@ mod tests {
         for _ in 0..ticks_in_a_second {
             heard = follow(heard, SILENCE, release);
         }
-        let brightest = heard.left.iter().chain(heard.right.iter()).fold(0.0f32, |a, b| a.max(*b));
+        let brightest = heard
+            .left
+            .iter()
+            .chain(heard.right.iter())
+            .fold(0.0f32, |a, b| a.max(*b));
         assert!(brightest < 0.05, "still lit after a second: {brightest}");
     }
 
@@ -545,12 +574,18 @@ mod tests {
 
         // Steady sound: no change, so only the presence floor shows.
         let steady = punch(onsets(loud, loud), loud);
-        assert!((steady.left[0] - 0.9 * LEVEL_FLOOR).abs() < 0.01, "{steady:?}");
+        assert!(
+            (steady.left[0] - 0.9 * LEVEL_FLOOR).abs() < 0.01,
+            "{steady:?}"
+        );
 
         // A hit of the same size against that steady background reads far
         // brighter than the background itself.
         let hit = punch(onsets(quiet, loud), loud);
-        assert!(hit.left[0] > steady.left[0] * 2.0, "hit {hit:?} vs steady {steady:?}");
+        assert!(
+            hit.left[0] > steady.left[0] * 2.0,
+            "hit {hit:?} vs steady {steady:?}"
+        );
     }
 
     #[test]
@@ -559,8 +594,14 @@ mod tests {
         // real energy the high band's share stays small, so the top row does
         // not flash as hard as the bottom. Measured after per-band gain they
         // came out equal and the whole pad pulsed with the bass.
-        let before = Levels { left: [0.10, 0.0, 0.0, 0.02], right: [0.10, 0.0, 0.0, 0.02] };
-        let after = Levels { left: [0.70, 0.0, 0.0, 0.10], right: [0.70, 0.0, 0.0, 0.10] };
+        let before = Levels {
+            left: [0.10, 0.0, 0.0, 0.02],
+            right: [0.10, 0.0, 0.0, 0.02],
+        };
+        let after = Levels {
+            left: [0.70, 0.0, 0.0, 0.10],
+            right: [0.70, 0.0, 0.0, 0.10],
+        };
         let hit = onsets(before, after);
         assert!(
             hit.left[0] > hit.left[BANDS - 1] * 5.0,
@@ -610,7 +651,10 @@ mod tests {
         }
         let after = against_peak(heard, peak);
         let ratio = after.left[0] / after.left[1];
-        assert!((ratio - 4.0).abs() < 0.2, "balance became {ratio}:1, not 4:1");
+        assert!(
+            (ratio - 4.0).abs() < 0.2,
+            "balance became {ratio}:1, not 4:1"
+        );
     }
 
     #[test]
@@ -631,7 +675,10 @@ mod tests {
         let cells = [[200u8; 3]; LED_COUNT];
 
         // Hard left, all bands: bright on the left column, dark on the right.
-        let left_only = Levels { left: [1.0; BANDS], right: [0.0; BANDS] };
+        let left_only = Levels {
+            left: [1.0; BANDS],
+            right: [0.0; BANDS],
+        };
         let lit = modulate(&cells, left_only);
         assert_eq!(lit[GRID[0][0][0] as usize], [200; 3]);
         assert_eq!(lit[GRID[GRID_W - 1][0][0] as usize], [0; 3]);
@@ -641,10 +688,23 @@ mod tests {
         // Bass only, centred: the bottom row lights and the top row does not.
         let mut bass = [0.0; BANDS];
         bass[0] = 1.0;
-        let lit = modulate(&cells, Levels { left: bass, right: bass });
+        let lit = modulate(
+            &cells,
+            Levels {
+                left: bass,
+                right: bass,
+            },
+        );
         for column in GRID {
-            assert_eq!(lit[column[0][0] as usize], [200; 3], "bottom row is the low band");
-            assert_eq!(lit[column[BANDS - 1][0] as usize], [0; 3], "top row is the high band");
+            assert_eq!(
+                lit[column[0][0] as usize], [200; 3],
+                "bottom row is the low band"
+            );
+            assert_eq!(
+                lit[column[BANDS - 1][0] as usize],
+                [0; 3],
+                "top row is the high band"
+            );
         }
     }
 
@@ -671,7 +731,13 @@ mod tests {
     #[test]
     fn the_sides_meter_one_channel_each() {
         let cells = [[200u8; 3]; LED_COUNT];
-        let lit = modulate(&cells, Levels { left: [1.0; BANDS], right: [0.0; BANDS] });
+        let lit = modulate(
+            &cells,
+            Levels {
+                left: [1.0; BANDS],
+                right: [0.0; BANDS],
+            },
+        );
         // Hard left: the left column is lit all the way down, right is out.
         for (led, _) in UNDERGLOW_LEFT {
             assert_eq!(lit[led as usize], [200; 3]);
@@ -684,7 +750,13 @@ mod tests {
         // alone lights only the lowest of the three.
         let mut bass = [0.0; BANDS];
         bass[0] = 1.0;
-        let lit = modulate(&cells, Levels { left: bass, right: bass });
+        let lit = modulate(
+            &cells,
+            Levels {
+                left: bass,
+                right: bass,
+            },
+        );
         for (led, row) in UNDERGLOW_LEFT {
             let wanted = if row == 0 { [200; 3] } else { [0; 3] };
             assert_eq!(lit[led as usize], wanted, "LED {led} sits on row {row}");

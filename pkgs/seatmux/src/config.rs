@@ -96,7 +96,9 @@ impl Config {
 
         reject_duplicates(seats.iter().map(|s| s.name.as_str()), "seat name")?;
         reject_duplicates(
-            seats.iter().flat_map(|s| s.connectors.iter().map(String::as_str)),
+            seats
+                .iter()
+                .flat_map(|s| s.connectors.iter().map(String::as_str)),
             "connector",
         )?;
         // Two seats both *including* a device would race to open it. Exclude
@@ -120,7 +122,11 @@ impl Seat {
         }
         // libseat carries the seat name over the wire in a fixed-size field.
         if raw.name.len() + 1 > MAX_SEAT_LEN {
-            bail!("seat name '{}' exceeds {} bytes", raw.name, MAX_SEAT_LEN - 1);
+            bail!(
+                "seat name '{}' exceeds {} bytes",
+                raw.name,
+                MAX_SEAT_LEN - 1
+            );
         }
         if raw.connectors.is_empty() {
             bail!("seat '{}' has no connectors", raw.name);
@@ -237,7 +243,10 @@ command    = ["sway", "-c", "/tv.conf"]
         assert!(!desk.devices.allows(&k400()), "desk must not take the K400");
         assert!(tv.devices.allows(&k400()), "tv must take the K400");
         assert!(desk.devices.allows(&mx_master()));
-        assert!(!tv.devices.allows(&mx_master()), "tv takes only what it lists");
+        assert!(
+            !tv.devices.allows(&mx_master()),
+            "tv takes only what it lists"
+        );
     }
 
     /// Any of the identities udev reports may name a device, so a config written
@@ -245,11 +254,21 @@ command    = ["sway", "-c", "/tv.conf"]
     /// vendor:product, and vice versa.
     #[test]
     fn any_identity_can_name_a_device() {
-        for key in ["046d:404d", "pci-0000:77:00.0-usb-0:1.3:1.2", "Logitech K400 Plus"] {
+        for key in [
+            "046d:404d",
+            "pci-0000:77:00.0-usb-0:1.3:1.2",
+            "Logitech K400 Plus",
+        ] {
             let text = DESK_AND_TV.replace("046d:404d", key);
             let config = Config::parse(&text).unwrap();
-            assert!(config.seats[1].devices.allows(&k400()), "tv should match on {key}");
-            assert!(!config.seats[0].devices.allows(&k400()), "desk should exclude by {key}");
+            assert!(
+                config.seats[1].devices.allows(&k400()),
+                "tv should match on {key}"
+            );
+            assert!(
+                !config.seats[0].devices.allows(&k400()),
+                "desk should exclude by {key}"
+            );
         }
     }
 
@@ -287,7 +306,12 @@ connectors = ["DP-2"]
 include = ["dev-1"]
 command = ["sway"]
 "#;
-        assert!(Config::parse(both_include).unwrap_err().to_string().contains("dev-1"));
+        assert!(
+            Config::parse(both_include)
+                .unwrap_err()
+                .to_string()
+                .contains("dev-1")
+        );
 
         let both_exclude = both_include.replace("include", "exclude");
         assert!(Config::parse(&both_exclude).is_ok());
@@ -296,24 +320,36 @@ command = ["sway"]
     #[test]
     fn rejects_ambiguous_or_incomplete_seats() {
         let cases = [
-            (r#"[[seat]]
+            (
+                r#"[[seat]]
 name = "a"
 connectors = ["DP-1"]
-command = ["sway"]"#, "neither include nor exclude"),
-            (r#"[[seat]]
+command = ["sway"]"#,
+                "neither include nor exclude",
+            ),
+            (
+                r#"[[seat]]
 name = "a"
 connectors = ["DP-1"]
 include = ["x"]
 exclude = ["y"]
-command = ["sway"]"#, "both include and exclude"),
-            (r#"[[seat]]
+command = ["sway"]"#,
+                "both include and exclude",
+            ),
+            (
+                r#"[[seat]]
 name = "a"
 include = ["x"]
-command = ["sway"]"#, "no connectors"),
-            (r#"[[seat]]
+command = ["sway"]"#,
+                "no connectors",
+            ),
+            (
+                r#"[[seat]]
 name = "a"
 connectors = ["DP-1"]
-include = ["x"]"#, "no command"),
+include = ["x"]"#,
+                "no command",
+            ),
         ];
         for (text, expected) in cases {
             let err = Config::parse(text).unwrap_err().to_string();
@@ -329,6 +365,11 @@ include = ["x"]"#, "no command"),
         let text = format!(
             "[[seat]]\nname = \"{long}\"\nconnectors = [\"DP-1\"]\ninclude = [\"x\"]\ncommand = [\"sway\"]"
         );
-        assert!(Config::parse(&text).unwrap_err().to_string().contains("exceeds"));
+        assert!(
+            Config::parse(&text)
+                .unwrap_err()
+                .to_string()
+                .contains("exceeds")
+        );
     }
 }

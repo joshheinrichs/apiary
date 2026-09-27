@@ -145,7 +145,8 @@ impl Keyboard {
         while off < data.len() {
             off += rustix::io::write(&fd, &data[off..])?;
         }
-        self.vkbd.keymap(1 /* XKB_V1 */, fd.as_fd(), data.len() as u32);
+        self.vkbd
+            .keymap(1 /* XKB_V1 */, fd.as_fd(), data.len() as u32);
         self.conn.flush()?;
         Ok(())
     }

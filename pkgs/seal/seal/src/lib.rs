@@ -9,15 +9,42 @@ use xdg::BaseDirectories;
 
 use clap::Args;
 
-const BWRAP: &str = match option_env!("BWRAP") { Some(s) => s, None => "bwrap" };
-const XDG_DBUS_PROXY: &str = match option_env!("XDG_DBUS_PROXY") { Some(s) => s, None => "xdg-dbus-proxy" };
-const PASTA: &str = match option_env!("PASTA") { Some(s) => s, None => "pasta" };
-const CAGE: &str = match option_env!("CAGE") { Some(s) => s, None => "cage" };
-const PIPEWIRE: &str = match option_env!("PIPEWIRE") { Some(s) => s, None => "pipewire" };
-const WIREPLUMBER: &str = match option_env!("WIREPLUMBER") { Some(s) => s, None => "wireplumber" };
-const WIREPLUMBER_SHARE: &str = match option_env!("WIREPLUMBER_SHARE") { Some(s) => s, None => "" };
-const PIPEWIRE_SANDBOX_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CONF") { Some(s) => s, None => "pipewire-sandbox.conf" };
-const PIPEWIRE_SANDBOX_CAPTURE_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CAPTURE_CONF") { Some(s) => s, None => "pipewire-sandbox-capture.conf" };
+const BWRAP: &str = match option_env!("BWRAP") {
+    Some(s) => s,
+    None => "bwrap",
+};
+const XDG_DBUS_PROXY: &str = match option_env!("XDG_DBUS_PROXY") {
+    Some(s) => s,
+    None => "xdg-dbus-proxy",
+};
+const PASTA: &str = match option_env!("PASTA") {
+    Some(s) => s,
+    None => "pasta",
+};
+const CAGE: &str = match option_env!("CAGE") {
+    Some(s) => s,
+    None => "cage",
+};
+const PIPEWIRE: &str = match option_env!("PIPEWIRE") {
+    Some(s) => s,
+    None => "pipewire",
+};
+const WIREPLUMBER: &str = match option_env!("WIREPLUMBER") {
+    Some(s) => s,
+    None => "wireplumber",
+};
+const WIREPLUMBER_SHARE: &str = match option_env!("WIREPLUMBER_SHARE") {
+    Some(s) => s,
+    None => "",
+};
+const PIPEWIRE_SANDBOX_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CONF") {
+    Some(s) => s,
+    None => "pipewire-sandbox.conf",
+};
+const PIPEWIRE_SANDBOX_CAPTURE_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_CAPTURE_CONF") {
+    Some(s) => s,
+    None => "pipewire-sandbox-capture.conf",
+};
 
 // ---------------------------------------------------------------------------
 // CLI flags shared by both binaries
@@ -133,26 +160,53 @@ impl Default for SandboxArgs {
     fn default() -> Self {
         Self {
             hostname: "bubble".into(),
-            gui: false, audio: false, audio_capture: false, network: false, gpu: false,
+            gui: false,
+            audio: false,
+            audio_capture: false,
+            network: false,
+            gpu: false,
             gpu_render: false,
-            wayland: false, pulse: false, pipewire: false, camera: false,
-            pasta: false, pasta_tcp: Vec::new(), pasta_udp: Vec::new(),
+            wayland: false,
+            pulse: false,
+            pipewire: false,
+            camera: false,
+            pasta: false,
+            pasta_tcp: Vec::new(),
+            pasta_udp: Vec::new(),
             pasta_mac: None,
-            new_session: false, keep_env: false, cage: false,
-            dbus_talk: Vec::new(), dbus_own: Vec::new(),
-            persist_home: None, share_tmp: None, set_env: Vec::new(), fwd_env: Vec::new(),
-            ro_bind: Vec::new(), rw_bind: Vec::new(), tmpfs: Vec::new(),
+            new_session: false,
+            keep_env: false,
+            cage: false,
+            dbus_talk: Vec::new(),
+            dbus_own: Vec::new(),
+            persist_home: None,
+            share_tmp: None,
+            set_env: Vec::new(),
+            fwd_env: Vec::new(),
+            ro_bind: Vec::new(),
+            rw_bind: Vec::new(),
+            tmpfs: Vec::new(),
             bwrap: None,
         }
     }
 }
 
 impl SandboxArgs {
-    pub fn need_wayland(&self) -> bool { self.wayland || self.gui || self.cage }
-    pub fn need_pulse(&self) -> bool   { self.pulse || self.audio || self.audio_capture || self.gui }
-    pub fn need_pipewire(&self) -> bool { self.pipewire || self.audio || self.audio_capture || self.gui }
-    pub fn need_dbus(&self) -> bool    { !self.dbus_talk.is_empty() || !self.dbus_own.is_empty() }
-    pub fn need_network_files(&self) -> bool { self.network || self.pasta }
+    pub fn need_wayland(&self) -> bool {
+        self.wayland || self.gui || self.cage
+    }
+    pub fn need_pulse(&self) -> bool {
+        self.pulse || self.audio || self.audio_capture || self.gui
+    }
+    pub fn need_pipewire(&self) -> bool {
+        self.pipewire || self.audio || self.audio_capture || self.gui
+    }
+    pub fn need_dbus(&self) -> bool {
+        !self.dbus_talk.is_empty() || !self.dbus_own.is_empty()
+    }
+    pub fn need_network_files(&self) -> bool {
+        self.network || self.pasta
+    }
 
     /// Serialize back to CLI args for embedding in wrapper scripts.
     pub fn to_cli_args(&self) -> Vec<String> {
@@ -160,49 +214,55 @@ impl SandboxArgs {
 
         macro_rules! flag {
             ($field:expr, $name:expr) => {
-                if $field { out.push($name.to_string()); }
+                if $field {
+                    out.push($name.to_string());
+                }
             };
         }
         macro_rules! opt {
             ($field:expr, $name:expr) => {
-                if let Some(ref v) = $field { out.push(format!("{}={}", $name, v)); }
+                if let Some(ref v) = $field {
+                    out.push(format!("{}={}", $name, v));
+                }
             };
         }
         macro_rules! multi {
             ($field:expr, $name:expr) => {
-                for v in &$field { out.push(format!("{}={}", $name, v)); }
+                for v in &$field {
+                    out.push(format!("{}={}", $name, v));
+                }
             };
         }
 
-        flag!(self.gui,           "--gui");
-        flag!(self.audio,         "--audio");
+        flag!(self.gui, "--gui");
+        flag!(self.audio, "--audio");
         flag!(self.audio_capture, "--audio-capture");
-        flag!(self.network,       "--network");
-        flag!(self.pasta,       "--pasta");
-        flag!(self.gpu,         "--gpu");
-        flag!(self.gpu_render,  "--gpu-render");
-        flag!(self.wayland,     "--wayland");
-        flag!(self.pulse,       "--pulse");
-        flag!(self.pipewire,    "--pipewire");
-        flag!(self.camera,      "--camera");
+        flag!(self.network, "--network");
+        flag!(self.pasta, "--pasta");
+        flag!(self.gpu, "--gpu");
+        flag!(self.gpu_render, "--gpu-render");
+        flag!(self.wayland, "--wayland");
+        flag!(self.pulse, "--pulse");
+        flag!(self.pipewire, "--pipewire");
+        flag!(self.camera, "--camera");
         flag!(self.new_session, "--new-session");
-        flag!(self.cage,        "--cage");
-        flag!(self.keep_env,    "--keep-env");
+        flag!(self.cage, "--cage");
+        flag!(self.keep_env, "--keep-env");
 
         out.push(format!("--hostname={}", self.hostname));
 
         opt!(self.persist_home, "--persist-home");
-        opt!(self.share_tmp,  "--share-tmp");
+        opt!(self.share_tmp, "--share-tmp");
         multi!(self.dbus_talk, "--dbus-talk");
-        multi!(self.dbus_own,  "--dbus-own");
+        multi!(self.dbus_own, "--dbus-own");
         multi!(self.pasta_tcp, "--pasta-tcp");
         multi!(self.pasta_udp, "--pasta-udp");
-        opt!(self.pasta_mac,         "--pasta-mac");
-        multi!(self.set_env,   "--set-env");
-        multi!(self.fwd_env,   "--fwd-env");
-        multi!(self.ro_bind,   "--ro-bind");
-        multi!(self.rw_bind,   "--rw-bind");
-        multi!(self.tmpfs,     "--tmpfs");
+        opt!(self.pasta_mac, "--pasta-mac");
+        multi!(self.set_env, "--set-env");
+        multi!(self.fwd_env, "--fwd-env");
+        multi!(self.ro_bind, "--ro-bind");
+        multi!(self.rw_bind, "--rw-bind");
+        multi!(self.tmpfs, "--tmpfs");
 
         opt!(self.bwrap, "--bwrap");
 
@@ -217,44 +277,89 @@ impl SandboxArgs {
 struct BwrapArgs(Vec<OsString>);
 
 impl BwrapArgs {
-    fn new() -> Self { Self(Vec::new()) }
+    fn new() -> Self {
+        Self(Vec::new())
+    }
 
-    fn push(&mut self, s: impl Into<OsString>) { self.0.push(s.into()); }
+    fn push(&mut self, s: impl Into<OsString>) {
+        self.0.push(s.into());
+    }
 
-    fn flag(&mut self, f: &str) { self.push(f); }
+    fn flag(&mut self, f: &str) {
+        self.push(f);
+    }
 
     fn ro_bind(&mut self, src: impl Into<OsString>, dst: impl Into<OsString>) {
-        self.push("--ro-bind"); self.push(src); self.push(dst);
+        self.push("--ro-bind");
+        self.push(src);
+        self.push(dst);
     }
     fn ro_bind_try(&mut self, src: impl Into<OsString>, dst: impl Into<OsString>) {
-        self.push("--ro-bind-try"); self.push(src); self.push(dst);
+        self.push("--ro-bind-try");
+        self.push(src);
+        self.push(dst);
     }
     fn bind(&mut self, src: impl Into<OsString>, dst: impl Into<OsString>) {
-        self.push("--bind"); self.push(src); self.push(dst);
+        self.push("--bind");
+        self.push(src);
+        self.push(dst);
     }
     fn bind_try(&mut self, src: impl Into<OsString>, dst: impl Into<OsString>) {
-        self.push("--bind-try"); self.push(src); self.push(dst);
+        self.push("--bind-try");
+        self.push(src);
+        self.push(dst);
     }
     fn dev_bind(&mut self, src: impl Into<OsString>, dst: impl Into<OsString>) {
-        self.push("--dev-bind"); self.push(src); self.push(dst);
+        self.push("--dev-bind");
+        self.push(src);
+        self.push(dst);
     }
-    fn proc(&mut self, dst: &str)  { self.push("--proc");  self.push(dst); }
-    fn dev(&mut self, dst: &str)   { self.push("--dev");   self.push(dst); }
-    fn dir(&mut self, dst: impl Into<OsString>) { self.push("--dir"); self.push(dst); }
-    fn tmpfs(&mut self, dst: impl Into<OsString>) { self.push("--tmpfs"); self.push(dst); }
+    fn proc(&mut self, dst: &str) {
+        self.push("--proc");
+        self.push(dst);
+    }
+    fn dev(&mut self, dst: &str) {
+        self.push("--dev");
+        self.push(dst);
+    }
+    fn dir(&mut self, dst: impl Into<OsString>) {
+        self.push("--dir");
+        self.push(dst);
+    }
+    fn tmpfs(&mut self, dst: impl Into<OsString>) {
+        self.push("--tmpfs");
+        self.push(dst);
+    }
     fn file(&mut self, fd: i32, dst: &str) {
-        self.push("--file"); self.push(fd.to_string()); self.push(dst);
+        self.push("--file");
+        self.push(fd.to_string());
+        self.push(dst);
     }
     fn setenv(&mut self, key: &str, val: &str) {
-        self.push("--setenv"); self.push(key); self.push(val);
+        self.push("--setenv");
+        self.push(key);
+        self.push(val);
     }
-    fn hostname(&mut self, name: &str) { self.push("--hostname"); self.push(name); }
+    fn hostname(&mut self, name: &str) {
+        self.push("--hostname");
+        self.push(name);
+    }
 
-    fn clearenv(&mut self)      { self.flag("--clearenv"); }
-    fn unshare_all(&mut self)   { self.flag("--unshare-all"); }
-    fn share_net(&mut self)     { self.flag("--share-net"); }
-    fn die_with_parent(&mut self) { self.flag("--die-with-parent"); }
-    fn new_session(&mut self)   { self.flag("--new-session"); }
+    fn clearenv(&mut self) {
+        self.flag("--clearenv");
+    }
+    fn unshare_all(&mut self) {
+        self.flag("--unshare-all");
+    }
+    fn share_net(&mut self) {
+        self.flag("--share-net");
+    }
+    fn die_with_parent(&mut self) {
+        self.flag("--die-with-parent");
+    }
+    fn new_session(&mut self) {
+        self.flag("--new-session");
+    }
 
     fn exec(mut self, exe: &Path, args: &[OsString]) -> Vec<OsString> {
         self.flag("--");
@@ -276,8 +381,16 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     let username = env::var("USER").unwrap_or_else(|_| uid.to_string());
     let groupname = unsafe {
         let gr = libc::getgrgid(gid);
-        if gr.is_null() { None } else { std::ffi::CStr::from_ptr((*gr).gr_name).to_str().ok().map(|s| s.to_owned()) }
-    }.unwrap_or_else(|| gid.to_string());
+        if gr.is_null() {
+            None
+        } else {
+            std::ffi::CStr::from_ptr((*gr).gr_name)
+                .to_str()
+                .ok()
+                .map(|s| s.to_owned())
+        }
+    }
+    .unwrap_or_else(|| gid.to_string());
 
     let xdg = BaseDirectories::new();
     let xdg_runtime = xdg
@@ -289,12 +402,15 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     // Map uid 0 in passwd/group to the real username so getpwuid(0) returns
     // the correct name and home directory.
     let passwd_fd = write_pipe(format!("{}:x:0:0::{}:/bin/sh\n", username, home));
-    let group_fd  = write_pipe(format!("{}:x:0:{}\n", groupname, username));
+    let group_fd = write_pipe(format!("{}:x:0:{}\n", groupname, username));
 
     let dbus = if args.need_dbus() {
         match spawn_dbus_proxy(args, &xdg_runtime) {
             Ok(d) => Some(d),
-            Err(e) => { eprintln!("seal: dbus proxy failed: {}", e); None }
+            Err(e) => {
+                eprintln!("seal: dbus proxy failed: {}", e);
+                None
+            }
         }
     } else {
         None
@@ -351,7 +467,9 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         let xdg_bp = BaseDirectories::with_prefix("seal");
         let persist = xdg_bp
             .create_data_directory(format!("{}/home", name))
-            .unwrap_or_else(|_| PathBuf::from(&home).join(format!(".local/share/seal/{}/home", name)));
+            .unwrap_or_else(|_| {
+                PathBuf::from(&home).join(format!(".local/share/seal/{}/home", name))
+            });
         cmd.bind(persist, &home);
     } else {
         cmd.dir(&home);
@@ -400,7 +518,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         if Path::new("/etc/static/ssl").exists() {
             cmd.ro_bind_try("/etc/static/ssl", "/etc/static/ssl");
         }
-        for cert in ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/ca-bundle.crt"] {
+        for cert in [
+            "/etc/ssl/certs/ca-certificates.crt",
+            "/etc/ssl/certs/ca-bundle.crt",
+        ] {
             if let Ok(real) = fs::canonicalize(cert) {
                 cmd.ro_bind_try(&real, &real);
             }
@@ -416,8 +537,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
 
     if let Some(ref p) = pasta {
-        cmd.push("--info-fd"); cmd.push(p.info_fd.to_string());
-        cmd.push("--block-fd"); cmd.push(p.block_fd.to_string());
+        cmd.push("--info-fd");
+        cmd.push(p.info_fd.to_string());
+        cmd.push("--block-fd");
+        cmd.push(p.block_fd.to_string());
     }
 
     cmd.hostname(&args.hostname);
@@ -425,9 +548,15 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         cmd.clearenv();
     }
     cmd.setenv("HOME", &home);
-    if let Ok(v) = env::var("TERM") { cmd.setenv("TERM", &v); }
-    if let Ok(v) = env::var("LANG") { cmd.setenv("LANG", &v); }
-    if let Ok(v) = env::var("TZ")   { cmd.setenv("TZ",   &v); }
+    if let Ok(v) = env::var("TERM") {
+        cmd.setenv("TERM", &v);
+    }
+    if let Ok(v) = env::var("LANG") {
+        cmd.setenv("LANG", &v);
+    }
+    if let Ok(v) = env::var("TZ") {
+        cmd.setenv("TZ", &v);
+    }
 
     // XDG_RUNTIME_DIR — set once, many features need it
     if args.need_wayland() || args.need_pulse() || args.need_pipewire() || args.need_dbus() {
@@ -535,8 +664,12 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
             }
             cmd.setenv("XDG_DATA_DIRS", &resolved.join(":"));
         }
-        if let Ok(v) = env::var("XCURSOR_THEME") { cmd.setenv("XCURSOR_THEME", &v); }
-        if let Ok(v) = env::var("XCURSOR_SIZE")  { cmd.setenv("XCURSOR_SIZE", &v); }
+        if let Ok(v) = env::var("XCURSOR_THEME") {
+            cmd.setenv("XCURSOR_THEME", &v);
+        }
+        if let Ok(v) = env::var("XCURSOR_SIZE") {
+            cmd.setenv("XCURSOR_SIZE", &v);
+        }
         if let Ok(paths) = env::var("XCURSOR_PATH") {
             cmd.setenv("XCURSOR_PATH", &paths);
             for dir in paths.split(':').filter(|d| !d.is_empty()) {
@@ -636,7 +769,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
             }
             let mut status = 0i32;
             unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
-            for mut child in cleanup { child.kill().ok(); child.wait().ok(); }
+            for mut child in cleanup {
+                child.kill().ok();
+                child.wait().ok();
+            }
             let code = if unsafe { libc::WIFEXITED(status) } {
                 unsafe { libc::WEXITSTATUS(status) }
             } else {
@@ -675,9 +811,8 @@ pub struct DbusProxy {
 fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusProxy> {
     use std::os::unix::process::CommandExt;
 
-    let dbus_addr = env::var("DBUS_SESSION_BUS_ADDRESS").map_err(|_| {
-        io::Error::new(io::ErrorKind::NotFound, "DBUS_SESSION_BUS_ADDRESS not set")
-    })?;
+    let dbus_addr = env::var("DBUS_SESSION_BUS_ADDRESS")
+        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "DBUS_SESSION_BUS_ADDRESS not set"))?;
 
     // Proxy writes a ready byte to the write end; parent keeps the read end
     // open in bwrap. When bwrap exits, POLLHUP fires on the proxy's write end
@@ -717,7 +852,11 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
     unsafe { libc::close(proxy_fd) };
 
     // Block until the proxy signals readiness. 5s timeout covers slow startup.
-    let mut pfd = libc::pollfd { fd: parent_fd, events: libc::POLLIN | libc::POLLHUP, revents: 0 };
+    let mut pfd = libc::pollfd {
+        fd: parent_fd,
+        events: libc::POLLIN | libc::POLLHUP,
+        revents: 0,
+    };
     let ret = unsafe { libc::poll(&mut pfd, 1, 5000) };
     let mut buf = [0u8; 1];
     let n = if ret > 0 {
@@ -727,10 +866,17 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
     };
     if n != 1 {
         unsafe { libc::close(parent_fd) };
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "dbus proxy did not become ready"));
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "dbus proxy did not become ready",
+        ));
     }
 
-    Ok(DbusProxy { socket, lifetime_fd: parent_fd, _child: child })
+    Ok(DbusProxy {
+        socket,
+        lifetime_fd: parent_fd,
+        _child: child,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -747,39 +893,80 @@ fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<Pipewire
     use std::os::unix::process::CommandExt;
     let name = format!("seal-pw-{}", unsafe { libc::getpid() });
     let socket = format!("{}/{}", xdg_runtime, name);
-    let conf = if capture { PIPEWIRE_SANDBOX_CAPTURE_CONF } else { PIPEWIRE_SANDBOX_CONF };
+    let conf = if capture {
+        PIPEWIRE_SANDBOX_CAPTURE_CONF
+    } else {
+        PIPEWIRE_SANDBOX_CONF
+    };
 
     let pulse_server = format!("unix:{}/pulse/native", xdg_runtime);
     let mut pw_cmd = Command::new(PIPEWIRE);
-    pw_cmd.arg("-c").arg(conf)
+    pw_cmd
+        .arg("-c")
+        .arg(conf)
         .env("PIPEWIRE_CORE", &name)
         .env("XDG_RUNTIME_DIR", xdg_runtime)
         .env("PULSE_SERVER", &pulse_server);
-    unsafe { pw_cmd.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_int, 0, 0, 0); Ok(()) }); }
-    let pw_child = pw_cmd.spawn()
+    unsafe {
+        pw_cmd.pre_exec(|| {
+            libc::prctl(
+                libc::PR_SET_PDEATHSIG,
+                libc::SIGTERM as libc::c_int,
+                0,
+                0,
+                0,
+            );
+            Ok(())
+        });
+    }
+    let pw_child = pw_cmd
+        .spawn()
         .map_err(|e| io::Error::new(e.kind(), format!("pipewire: {}", e)))?;
 
     let mut ready = false;
     for _ in 0..50 {
-        if Path::new(&socket).exists() { ready = true; break; }
+        if Path::new(&socket).exists() {
+            ready = true;
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     if !ready {
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "pipewire proxy: socket did not appear"));
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "pipewire proxy: socket did not appear",
+        ));
     }
 
     let mut wp = Command::new(WIREPLUMBER);
-    wp.arg("--profile").arg("policy")
-      .env("PIPEWIRE_REMOTE", &name)
-      .env("XDG_RUNTIME_DIR", xdg_runtime);
+    wp.arg("--profile")
+        .arg("policy")
+        .env("PIPEWIRE_REMOTE", &name)
+        .env("XDG_RUNTIME_DIR", xdg_runtime);
     if !WIREPLUMBER_SHARE.is_empty() {
         wp.env("XDG_DATA_DIRS", WIREPLUMBER_SHARE);
     }
-    unsafe { wp.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM as libc::c_int, 0, 0, 0); Ok(()) }); }
-    let wp_child = wp.spawn()
+    unsafe {
+        wp.pre_exec(|| {
+            libc::prctl(
+                libc::PR_SET_PDEATHSIG,
+                libc::SIGTERM as libc::c_int,
+                0,
+                0,
+                0,
+            );
+            Ok(())
+        });
+    }
+    let wp_child = wp
+        .spawn()
         .map_err(|e| io::Error::new(e.kind(), format!("wireplumber: {}", e)))?;
 
-    Ok(PipewireProxy { socket, pw_child, wp_child })
+    Ok(PipewireProxy {
+        socket,
+        pw_child,
+        wp_child,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -851,17 +1038,25 @@ fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator>
         }
     }
 
-    Ok(PastaOrchestrator { info_fd: info_w, block_fd: block_r, _child_pid: pid })
+    Ok(PastaOrchestrator {
+        info_fd: info_w,
+        block_fd: block_r,
+        _child_pid: pid,
+    })
 }
 
-fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String], mac: Option<&str>) -> i32 {
+fn orchestrator_main(
+    info_fd: i32,
+    block_fd: i32,
+    tcp: &[String],
+    udp: &[String],
+    mac: Option<&str>,
+) -> i32 {
     // Read bwrap's --info-fd JSON until we can extract child-pid.
     let mut buf = Vec::with_capacity(1024);
     let mut tmp = [0u8; 1024];
     let child_pid = loop {
-        let n = unsafe {
-            libc::read(info_fd, tmp.as_mut_ptr() as *mut libc::c_void, tmp.len())
-        };
+        let n = unsafe { libc::read(info_fd, tmp.as_mut_ptr() as *mut libc::c_void, tmp.len()) };
         if n <= 0 {
             break parse_child_pid(&buf);
         }
@@ -900,10 +1095,14 @@ fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]
         // into the sandbox and steals ports the sandboxed app might want
         // (e.g. syncthing's 22000). For our app-sandbox use case the sandbox
         // should reach the internet, not host localhost services.
-        .arg("-T").arg("none")
-        .arg("-U").arg("none")
-        .arg("--userns").arg(&userns)
-        .arg("--netns").arg(&netns);
+        .arg("-T")
+        .arg("none")
+        .arg("-U")
+        .arg("none")
+        .arg("--userns")
+        .arg(&userns)
+        .arg("--netns")
+        .arg(&netns);
     if let Some(ref mac) = mac {
         cmd.arg("--ns-mac-addr").arg(mac);
     }
@@ -1001,49 +1200,86 @@ mod tests {
     // -- need_* helpers --
 
     #[test]
-    fn need_wayland_direct() { assert!(sa(|a| a.wayland = true).need_wayland()); }
+    fn need_wayland_direct() {
+        assert!(sa(|a| a.wayland = true).need_wayland());
+    }
     #[test]
-    fn need_wayland_via_gui() { assert!(sa(|a| a.gui = true).need_wayland()); }
+    fn need_wayland_via_gui() {
+        assert!(sa(|a| a.gui = true).need_wayland());
+    }
     #[test]
-    fn need_wayland_via_cage() { assert!(sa(|a| a.cage = true).need_wayland()); }
+    fn need_wayland_via_cage() {
+        assert!(sa(|a| a.cage = true).need_wayland());
+    }
     #[test]
-    fn need_wayland_off() { assert!(!SandboxArgs::default().need_wayland()); }
+    fn need_wayland_off() {
+        assert!(!SandboxArgs::default().need_wayland());
+    }
 
     #[test]
-    fn need_pulse_direct() { assert!(sa(|a| a.pulse = true).need_pulse()); }
+    fn need_pulse_direct() {
+        assert!(sa(|a| a.pulse = true).need_pulse());
+    }
     #[test]
-    fn need_pulse_via_audio() { assert!(sa(|a| a.audio = true).need_pulse()); }
+    fn need_pulse_via_audio() {
+        assert!(sa(|a| a.audio = true).need_pulse());
+    }
     #[test]
-    fn need_pulse_via_gui() { assert!(sa(|a| a.gui = true).need_pulse()); }
+    fn need_pulse_via_gui() {
+        assert!(sa(|a| a.gui = true).need_pulse());
+    }
 
     #[test]
-    fn need_pipewire_direct() { assert!(sa(|a| a.pipewire = true).need_pipewire()); }
+    fn need_pipewire_direct() {
+        assert!(sa(|a| a.pipewire = true).need_pipewire());
+    }
     #[test]
-    fn need_pipewire_via_audio() { assert!(sa(|a| a.audio = true).need_pipewire()); }
+    fn need_pipewire_via_audio() {
+        assert!(sa(|a| a.audio = true).need_pipewire());
+    }
     #[test]
-    fn need_pipewire_via_audio_capture() { assert!(sa(|a| a.audio_capture = true).need_pipewire()); }
+    fn need_pipewire_via_audio_capture() {
+        assert!(sa(|a| a.audio_capture = true).need_pipewire());
+    }
     #[test]
-    fn need_pipewire_via_gui() { assert!(sa(|a| a.gui = true).need_pipewire()); }
+    fn need_pipewire_via_gui() {
+        assert!(sa(|a| a.gui = true).need_pipewire());
+    }
     #[test]
-    fn need_pulse_via_audio_capture() { assert!(sa(|a| a.audio_capture = true).need_pulse()); }
+    fn need_pulse_via_audio_capture() {
+        assert!(sa(|a| a.audio_capture = true).need_pulse());
+    }
 
     #[test]
-    fn need_dbus_talk() { assert!(sa(|a| a.dbus_talk.push("org.foo".into())).need_dbus()); }
+    fn need_dbus_talk() {
+        assert!(sa(|a| a.dbus_talk.push("org.foo".into())).need_dbus());
+    }
     #[test]
-    fn need_dbus_own() { assert!(sa(|a| a.dbus_own.push("org.bar".into())).need_dbus()); }
+    fn need_dbus_own() {
+        assert!(sa(|a| a.dbus_own.push("org.bar".into())).need_dbus());
+    }
     #[test]
-    fn need_dbus_empty() { assert!(!SandboxArgs::default().need_dbus()); }
+    fn need_dbus_empty() {
+        assert!(!SandboxArgs::default().need_dbus());
+    }
 
     // -- to_cli_args --
 
     #[test]
     fn cli_args_default_only_hostname() {
-        assert_eq!(SandboxArgs::default().to_cli_args(), vec!["--hostname=bubble"]);
+        assert_eq!(
+            SandboxArgs::default().to_cli_args(),
+            vec!["--hostname=bubble"]
+        );
     }
 
     #[test]
     fn cli_args_flags() {
-        let out = sa(|a| { a.gui = true; a.network = true; }).to_cli_args();
+        let out = sa(|a| {
+            a.gui = true;
+            a.network = true;
+        })
+        .to_cli_args();
         assert!(out.contains(&"--gui".into()));
         assert!(out.contains(&"--network".into()));
     }
@@ -1059,7 +1295,8 @@ mod tests {
         let out = sa(|a| {
             a.dbus_talk.push("org.foo".into());
             a.dbus_talk.push("org.bar".into());
-        }).to_cli_args();
+        })
+        .to_cli_args();
         assert!(out.contains(&"--dbus-talk=org.foo".into()));
         assert!(out.contains(&"--dbus-talk=org.bar".into()));
     }
@@ -1105,7 +1342,8 @@ mod tests {
         let out = sa(|a| {
             a.pasta = true;
             a.pasta_tcp.push("127.0.0.1/8384".into());
-        }).to_cli_args();
+        })
+        .to_cli_args();
         assert!(out.contains(&"--pasta-tcp=127.0.0.1/8384".into()));
     }
 
@@ -1114,7 +1352,8 @@ mod tests {
         let out = sa(|a| {
             a.pasta = true;
             a.pasta_udp.push("21027".into());
-        }).to_cli_args();
+        })
+        .to_cli_args();
         assert!(out.contains(&"--pasta-udp=21027".into()));
     }
 
@@ -1158,5 +1397,4 @@ mod tests {
     fn parse_child_pid_missing() {
         assert_eq!(parse_child_pid(b"{\"foo\": 1}"), None);
     }
-
 }

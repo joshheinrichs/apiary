@@ -57,7 +57,10 @@ pub struct State {
 
 impl State {
     pub const fn new() -> Self {
-        State { album: None, playing: false }
+        State {
+            album: None,
+            playing: false,
+        }
     }
 
     pub fn absorb(self, input: Input) -> Self {
@@ -72,13 +75,26 @@ impl State {
     /// meaningful on their clicks, where it picks previous vs next.
     pub fn apply(self, event: PadEvent) -> (Self, Option<Action>) {
         let action = match event {
-            PadEvent::Encoder { index: ENCODER_CENTRE, delta } => Some(Action::VolumeStep(delta)),
-            PadEvent::Encoder { index: ENCODER_LEFT | ENCODER_RIGHT, delta } => {
-                Some(Action::Seek(delta as i64 * SEEK_STEP_US))
-            }
-            PadEvent::Key { index: KEY_ENCODER_CENTRE, pressed: true } => Some(Action::PlayPause),
-            PadEvent::Key { index: KEY_ENCODER_LEFT, pressed: true } => Some(Action::PrevTrack),
-            PadEvent::Key { index: KEY_ENCODER_RIGHT, pressed: true } => Some(Action::NextTrack),
+            PadEvent::Encoder {
+                index: ENCODER_CENTRE,
+                delta,
+            } => Some(Action::VolumeStep(delta)),
+            PadEvent::Encoder {
+                index: ENCODER_LEFT | ENCODER_RIGHT,
+                delta,
+            } => Some(Action::Seek(delta as i64 * SEEK_STEP_US)),
+            PadEvent::Key {
+                index: KEY_ENCODER_CENTRE,
+                pressed: true,
+            } => Some(Action::PlayPause),
+            PadEvent::Key {
+                index: KEY_ENCODER_LEFT,
+                pressed: true,
+            } => Some(Action::PrevTrack),
+            PadEvent::Key {
+                index: KEY_ENCODER_RIGHT,
+                pressed: true,
+            } => Some(Action::NextTrack),
             _ => None,
         };
         (self, action)
@@ -116,11 +132,17 @@ pub struct Sources {
 
 impl Sources {
     pub fn new() -> Self {
-        Sources { meter: Meter::watch(AUDIO_SOURCE), heard: SILENCE }
+        Sources {
+            meter: Meter::watch(AUDIO_SOURCE),
+            heard: SILENCE,
+        }
     }
 
     pub fn tick(self, state: &State) -> Self {
-        Sources { heard: self.meter.tick(self.heard, state.playing), ..self }
+        Sources {
+            heard: self.meter.tick(self.heard, state.playing),
+            ..self
+        }
     }
 
     pub fn levels(&self) -> Levels {
@@ -153,9 +175,9 @@ impl Effects {
             Action::NextTrack => player.next(),
             Action::PrevTrack => player.previous(),
             Action::Seek(offset) => player.seek(offset),
-            Action::VolumeStep(detents) => player
-                .volume()
-                .and_then(|at| player.set_volume((at + detents as f64 * VOLUME_STEP).clamp(0.0, 1.0))),
+            Action::VolumeStep(detents) => player.volume().and_then(|at| {
+                player.set_volume((at + detents as f64 * VOLUME_STEP).clamp(0.0, 1.0))
+            }),
         };
         if let Err(e) = done {
             eprintln!("winry315: {action:?} failed: {e:#}");
@@ -195,7 +217,10 @@ pub fn watch(sink: impl Fn(Input) -> bool + Send + 'static) {
                     .map_err(|e| eprintln!("winry315: album art: {e:#}"))
                     .ok()
             });
-            eprintln!("winry315: album {}", if album.is_some() { "loaded" } else { "none" });
+            eprintln!(
+                "winry315: album {}",
+                if album.is_some() { "loaded" } else { "none" }
+            );
             if !sink(Input::Album(album)) {
                 return;
             }
@@ -217,22 +242,40 @@ mod tests {
 
         // Both side knobs scrub, and direction comes from the rotation.
         for index in [ENCODER_LEFT, ENCODER_RIGHT] {
-            assert_eq!(act(PadEvent::Encoder { index, delta: 1 }), Some(Action::Seek(SEEK_STEP_US)));
-            assert_eq!(act(PadEvent::Encoder { index, delta: -1 }), Some(Action::Seek(-SEEK_STEP_US)));
+            assert_eq!(
+                act(PadEvent::Encoder { index, delta: 1 }),
+                Some(Action::Seek(SEEK_STEP_US))
+            );
+            assert_eq!(
+                act(PadEvent::Encoder { index, delta: -1 }),
+                Some(Action::Seek(-SEEK_STEP_US))
+            );
         }
         assert_eq!(
-            act(PadEvent::Encoder { index: ENCODER_CENTRE, delta: -2 }),
+            act(PadEvent::Encoder {
+                index: ENCODER_CENTRE,
+                delta: -2
+            }),
             Some(Action::VolumeStep(-2))
         );
 
         // Clicks are where the side knobs' identity matters.
-        let click = |index| PadEvent::Key { index, pressed: true };
+        let click = |index| PadEvent::Key {
+            index,
+            pressed: true,
+        };
         assert_eq!(act(click(KEY_ENCODER_LEFT)), Some(Action::PrevTrack));
         assert_eq!(act(click(KEY_ENCODER_CENTRE)), Some(Action::PlayPause));
         assert_eq!(act(click(KEY_ENCODER_RIGHT)), Some(Action::NextTrack));
 
         // Releases must not double-fire.
-        assert_eq!(act(PadEvent::Key { index: KEY_ENCODER_CENTRE, pressed: false }), None);
+        assert_eq!(
+            act(PadEvent::Key {
+                index: KEY_ENCODER_CENTRE,
+                pressed: false
+            }),
+            None
+        );
     }
 
     #[test]
@@ -249,7 +292,11 @@ mod tests {
             assert_eq!(cells[led as usize], grid[row * GRID_W], "LED {led}");
         }
         for (led, row) in UNDERGLOW_RIGHT {
-            assert_eq!(cells[led as usize], grid[row * GRID_W + GRID_W - 1], "LED {led}");
+            assert_eq!(
+                cells[led as usize],
+                grid[row * GRID_W + GRID_W - 1],
+                "LED {led}"
+            );
         }
     }
 

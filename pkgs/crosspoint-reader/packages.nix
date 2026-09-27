@@ -11,7 +11,7 @@
 # platform requests — by `uri` for URL-pinned packages, by owner/name otherwise.
 
 let
-  lib = pkgs.lib;
+  inherit (pkgs) lib;
   py = pkgs.python3Packages;
 
   # The two native Python modules main.py imports at load time (filesystem image
@@ -26,7 +26,12 @@ let
       inherit version;
       hash = "sha256-qGev/QWzgbMV24J7EIUfjmTblMsw7sQIP0tEKs6yD/g=";
     };
-    build-system = with py; [ setuptools setuptools-scm wheel cython ];
+    build-system = with py; [
+      setuptools
+      setuptools-scm
+      wheel
+      cython
+    ];
     SETUPTOOLS_SCM_PRETEND_VERSION = version;
     pythonImportsCheck = [ "littlefs" ];
   };
@@ -40,15 +45,31 @@ let
       inherit version;
       hash = "sha256-qwSMf3s8+IxVi6mHEWr8vYa6/bMUXcaGWhULUMaADAs=";
     };
-    build-system = with py; [ setuptools cython ];
+    build-system = with py; [
+      setuptools
+      cython
+    ];
     pythonImportsCheck = [ "fatfs" ];
   };
 
   # Render PlatformIO's "installed package" marker.
-  piopm = { type, name, version, specName ? name, owner ? null, id ? null, uri ? null }:
+  piopm =
+    {
+      type,
+      name,
+      version,
+      specName ? name,
+      owner ? null,
+      id ? null,
+      uri ? null,
+    }:
     builtins.toJSON {
       inherit type name version;
-      spec = { inherit owner id uri; name = specName; requirements = null; };
+      spec = {
+        inherit owner id uri;
+        name = specName;
+        requirements = null;
+      };
     };
 
   pkgJson = name: version: builtins.toJSON { inherit name version; };
@@ -56,27 +77,60 @@ let
   # Unpack a release tar.xz into $out (stripping its single top dir) and drop a
   # synthetic .piopm. Done in one step so multi-GB trees aren't copied. pioarduino
   # requests these by URL, so the .piopm uri is the fetch url.
-  unpackPiopm = { name, version, owner, url, hash }:
-    pkgs.runCommand name { nativeBuildInputs = [ pkgs.gnutar pkgs.xz ]; } ''
-      mkdir -p $out
-      tar -xf ${pkgs.fetchurl { inherit url hash; }} -C $out --strip-components=1
-      printf '%s' ${lib.escapeShellArg (piopm {
-        type = "tool"; inherit name version owner; uri = url;
-      })} > $out/.piopm
-    '';
+  unpackPiopm =
+    {
+      name,
+      version,
+      owner,
+      url,
+      hash,
+    }:
+    pkgs.runCommand name
+      {
+        nativeBuildInputs = [
+          pkgs.gnutar
+          pkgs.xz
+        ];
+      }
+      ''
+        mkdir -p $out
+        tar -xf ${pkgs.fetchurl { inherit url hash; }} -C $out --strip-components=1
+        printf '%s' ${
+          lib.escapeShellArg (piopm {
+            type = "tool";
+            inherit name version owner;
+            uri = url;
+          })
+        } > $out/.piopm
+      '';
 
   # An empty package that exists only so PlatformIO sees it installed and skips
   # the download. The build never reads its contents.
-  stubPackage = { name, version, uri, owner ? "pioarduino" }:
-    pkgs.runCommand name {} ''
+  stubPackage =
+    {
+      name,
+      version,
+      uri,
+      owner ? "pioarduino",
+    }:
+    pkgs.runCommand name { } ''
       mkdir -p $out
-      printf '%s' ${lib.escapeShellArg (piopm {
-        type = "tool"; inherit name version owner uri;
-      })} > $out/.piopm
+      printf '%s' ${
+        lib.escapeShellArg (piopm {
+          type = "tool";
+          inherit
+            name
+            version
+            owner
+            uri
+            ;
+        })
+      } > $out/.piopm
       printf '%s' ${lib.escapeShellArg (pkgJson name version)} > $out/package.json
     '';
 
-in rec {
+in
+rec {
   # pioarduino platform source, placed at platforms/espressif32. One patch to
   # platform source: pioarduino force-reinstalls esptool into the penv from
   # tool-esptoolpy via `uv pip install` (a build-time network op, not gated on
@@ -90,18 +144,23 @@ in rec {
         hash = "sha256-7GgP+9qnv+nEM1C92S1TQ7WRD23wN+ZiaozNWyMCG4Q=";
         stripRoot = false;
       };
-    in pkgs.runCommand "platform-espressif32" {} ''
+    in
+    pkgs.runCommand "platform-espressif32" { } ''
       # The archive nests everything under a single platform-espressif32-*/ dir.
       cp -rL ${raw}/*/ $out
       chmod -R u+w $out
       substituteInPlace $out/platform.py \
         --replace-fail 'setup_penv_minimal(self, core_dir, install_esptool=True)' \
                        'setup_penv_minimal(self, core_dir, install_esptool=False)'
-      printf '%s' ${lib.escapeShellArg (piopm {
-        type = "platform"; name = "espressif32"; version = "55.3.37";
-        specName = "platform-espressif32";
-        uri = "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip";
-      })} > $out/.piopm
+      printf '%s' ${
+        lib.escapeShellArg (piopm {
+          type = "platform";
+          name = "espressif32";
+          version = "55.3.37";
+          specName = "platform-espressif32";
+          uri = "https://github.com/pioarduino/platform-espressif32/releases/download/55.03.37/platform-espressif32.zip";
+        })
+      } > $out/.piopm
     '';
 
   framework = unpackPiopm {
@@ -134,18 +193,26 @@ in rec {
     # Archive unpacks to a riscv32-esp-elf/ top dir.
     sourceRoot = "riscv32-esp-elf";
     nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-    buildInputs = with pkgs; [ stdenv.cc.cc.lib glibc zlib ];
+    buildInputs = with pkgs; [
+      stdenv.cc.cc.lib
+      glibc
+      zlib
+    ];
     # The bundled gdb wants libpython; we only use gcc/as/ld, so ignore it.
     autoPatchelfIgnoreMissingDeps = [ "libpython*" ];
     dontStrip = true;
     installPhase = ''
       mkdir -p $out
       cp -r . $out/
-      printf '%s' ${lib.escapeShellArg (piopm {
-        type = "tool"; name = "toolchain-riscv32-esp"; version = "14.2.0+20251107";
-        owner = "pioarduino";
-        uri = "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-14.2.0_20251107.zip";
-      })} > $out/.piopm
+      printf '%s' ${
+        lib.escapeShellArg (piopm {
+          type = "tool";
+          name = "toolchain-riscv32-esp";
+          version = "14.2.0+20251107";
+          owner = "pioarduino";
+          uri = "https://github.com/pioarduino/registry/releases/download/0.0.1/riscv32-esp-elf-14.2.0_20251107.zip";
+        })
+      } > $out/.piopm
     '';
   };
 
@@ -154,17 +221,20 @@ in rec {
   # With no tools/idf_tools.py, platform.py's `has_idf_tools` stays false so the
   # idf_tools install path is never taken.
   tool-esptoolpy = stubPackage {
-    name = "tool-esptoolpy"; version = "5.1.2";
+    name = "tool-esptoolpy";
+    version = "5.1.2";
     uri = "https://github.com/pioarduino/registry/releases/download/0.0.1/esptoolpy-v5.1.2.zip";
   };
 
   tool-esp_install = stubPackage {
-    name = "tool-esp_install"; version = "5.3.4";
+    name = "tool-esp_install";
+    version = "5.3.4";
     uri = "https://github.com/pioarduino/esp_install/releases/download/v5.3.4/esp_install-v5.3.4.zip";
   };
 
   contrib-piohome = stubPackage {
-    name = "contrib-piohome"; version = "3.4.4";
+    name = "contrib-piohome";
+    version = "3.4.4";
     uri = "https://github.com/pioarduino/registry/releases/download/0.0.1/contrib-piohome-3.4.4.tar.gz";
   };
 
@@ -178,13 +248,19 @@ in rec {
         from SCons.Script.Main import main
         sys.exit(main())
       '';
-    in pkgs.runCommand "tool-scons" {} ''
+    in
+    pkgs.runCommand "tool-scons" { } ''
       mkdir -p $out/scons
       cp -rL ${pkgs.scons}/lib/python*/site-packages/SCons $out/scons/SCons
-      printf '%s' ${lib.escapeShellArg (piopm {
-        type = "tool"; name = "tool-scons"; version = "4.40801.0";
-        owner = "platformio"; id = 8192;
-      })} > $out/.piopm
+      printf '%s' ${
+        lib.escapeShellArg (piopm {
+          type = "tool";
+          name = "tool-scons";
+          version = "4.40801.0";
+          owner = "platformio";
+          id = 8192;
+        })
+      } > $out/.piopm
       printf '%s' ${lib.escapeShellArg (pkgJson "tool-scons" "4.40801.0")} > $out/package.json
       cp ${launcher} $out/scons.py
     '';
@@ -197,9 +273,14 @@ in rec {
   # esptool 5.3.0). esp-idf-size/esp-coredump are only reached by `pio run -t`.
   penv =
     let
-      pyEnv = pkgs.python3.withPackages (ps: [ ps.certifi littlefs-python fatfs-ng ]);
+      pyEnv = pkgs.python3.withPackages (ps: [
+        ps.certifi
+        littlefs-python
+        fatfs-ng
+      ]);
       sitePackages = pkgs.python3.sitePackages;
-    in pkgs.runCommand "crosspoint-penv" {} ''
+    in
+    pkgs.runCommand "crosspoint-penv" { } ''
       mkdir -p $out/bin "$(dirname "$out/${sitePackages}")"
       ln -s ${pyEnv}/bin/python3 $out/bin/python
       ln -s ${pyEnv}/bin/python3 $out/bin/python3

@@ -22,11 +22,7 @@ fn main() {
         std::process::exit(1);
     };
 
-    let err = seal::run_sandbox(
-        &cli.sandbox,
-        exe.as_ref(),
-        &cli.command[1..],
-    );
+    let err = seal::run_sandbox(&cli.sandbox, exe.as_ref(), &cli.command[1..]);
 
     eprintln!("seal: exec failed: {}", err);
     std::process::exit(1);

@@ -58,13 +58,18 @@ impl<F: AsFd> Card<F> {
     /// After boot nothing may have probed yet, and an unprobed connector reads
     /// as `Unknown` — indistinguishable from disconnected.
     pub fn resources(&self, probe: bool) -> Result<Resources> {
-        let handles = self.resource_handles().context("reading resource handles")?;
+        let handles = self
+            .resource_handles()
+            .context("reading resource handles")?;
 
         let crtcs: Vec<Crtc> = handles
             .crtcs()
             .iter()
             .enumerate()
-            .map(|(index, handle)| Crtc { id: (*handle).into(), index })
+            .map(|(index, handle)| Crtc {
+                id: (*handle).into(),
+                index,
+            })
             .collect();
 
         let bit_of = |handle: &drm::control::crtc::Handle| -> Option<u32> {
@@ -111,7 +116,11 @@ impl<F: AsFd> Card<F> {
             });
         }
 
-        Ok(Resources { crtcs, planes, connectors })
+        Ok(Resources {
+            crtcs,
+            planes,
+            connectors,
+        })
     }
 
     /// A plane's primary/cursor/overlay role is a property, not a field.

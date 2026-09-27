@@ -33,8 +33,16 @@ pub struct Slot {
 /// The bottom row of keys picks the mode, one key per mode, no cycling. The
 /// rest of the row is waiting on the modes in INTENT.md.
 pub const SLOTS: [Slot; 2] = [
-    Slot { key: 10, tint: colour::TINT, mode: Mode::Colour },
-    Slot { key: 11, tint: spotify::TINT, mode: Mode::Spotify },
+    Slot {
+        key: 10,
+        tint: colour::TINT,
+        mode: Mode::Colour,
+    },
+    Slot {
+        key: 11,
+        tint: spotify::TINT,
+        mode: Mode::Spotify,
+    },
 ];
 
 /// Everything a mode's background threads have to say. The pad speaks through
@@ -73,7 +81,10 @@ pub fn absorb(state: State, input: Input) -> (State, Option<Action>) {
     match input {
         Input::Pad(event) => pressed(state, event),
         Input::Spotify(input) => (
-            State { spotify: state.spotify.absorb(input), ..state },
+            State {
+                spotify: state.spotify.absorb(input),
+                ..state
+            },
             None,
         ),
     }
@@ -82,13 +93,28 @@ pub fn absorb(state: State, input: Input) -> (State, Option<Action>) {
 /// Mode keys select on press, whatever mode is active; their release is not
 /// interesting. Everything else belongs to the mode you are in.
 fn pressed(state: State, event: PadEvent) -> (State, Option<Action>) {
-    if let PadEvent::Key { index, pressed: true } = event
+    if let PadEvent::Key {
+        index,
+        pressed: true,
+    } = event
         && let Some(slot) = SLOTS.iter().find(|slot| slot.key == index)
     {
-        return (State { active: slot.mode, ..state }, None);
+        return (
+            State {
+                active: slot.mode,
+                ..state
+            },
+            None,
+        );
     }
     match state.active {
-        Mode::Colour => (State { colour: state.colour.apply(event), ..state }, None),
+        Mode::Colour => (
+            State {
+                colour: state.colour.apply(event),
+                ..state
+            },
+            None,
+        ),
         Mode::Spotify => {
             let (spotify, action) = state.spotify.apply(event);
             (State { spotify, ..state }, action.map(Action::Spotify))
@@ -114,7 +140,9 @@ fn cells(state: &State) -> Cells {
         Mode::Spotify => state.spotify.cells(),
     };
     for slot in &SLOTS {
-        let Some(led) = led_for_key(slot.key) else { continue };
+        let Some(led) = led_for_key(slot.key) else {
+            continue;
+        };
         cells[led as usize] = match slot.mode == state.active {
             true => slot.tint,
             false => dimmed(slot.tint),
@@ -172,7 +200,9 @@ impl Effects {
     pub fn new(tx: mpsc::Sender<Input>) -> Self {
         spotify::watch(move |input| tx.send(Input::Spotify(input)).is_ok());
 
-        Effects { spotify: spotify::Effects::new() }
+        Effects {
+            spotify: spotify::Effects::new(),
+        }
     }
 
     pub fn run(&self, action: Action) {
@@ -204,11 +234,29 @@ mod tests {
     #[test]
     fn the_bottom_row_selects_modes_and_other_keys_do_not() {
         for slot in &SLOTS {
-            let state = absorb(State::new(), Input::Pad(PadEvent::Key { index: slot.key, pressed: true })).0;
-            assert_eq!(state.active, slot.mode, "key {} should select {:?}", slot.key, slot.mode);
+            let state = absorb(
+                State::new(),
+                Input::Pad(PadEvent::Key {
+                    index: slot.key,
+                    pressed: true,
+                }),
+            )
+            .0;
+            assert_eq!(
+                state.active, slot.mode,
+                "key {} should select {:?}",
+                slot.key, slot.mode
+            );
         }
         // Key 14 is the reserved end of the bottom row, not a mode.
-        let state = absorb(State::new(), Input::Pad(PadEvent::Key { index: 14, pressed: true })).0;
+        let state = absorb(
+            State::new(),
+            Input::Pad(PadEvent::Key {
+                index: 14,
+                pressed: true,
+            }),
+        )
+        .0;
         assert_eq!(state.active, Mode::Colour);
     }
 
@@ -216,13 +264,34 @@ mod tests {
     fn selecting_a_mode_leaves_every_other_mode_untouched() {
         // Independence, asserted: turning a knob in colour mode and then
         // switching away must not disturb what colour mode was holding.
-        let picked = absorb(State::new(), Input::Pad(PadEvent::Encoder { index: 0, delta: 3 })).0;
-        let switched = absorb(picked, Input::Pad(PadEvent::Key { index: 11, pressed: true })).0;
+        let picked = absorb(
+            State::new(),
+            Input::Pad(PadEvent::Encoder { index: 0, delta: 3 }),
+        )
+        .0;
+        let switched = absorb(
+            picked,
+            Input::Pad(PadEvent::Key {
+                index: 11,
+                pressed: true,
+            }),
+        )
+        .0;
         assert_eq!(switched.active, Mode::Spotify);
         assert_eq!(switched.colour, picked.colour, "colour mode lost its state");
 
-        let back = absorb(switched, Input::Pad(PadEvent::Key { index: 10, pressed: true })).0;
-        assert_eq!(back, picked, "coming back must restore exactly what was left");
+        let back = absorb(
+            switched,
+            Input::Pad(PadEvent::Key {
+                index: 10,
+                pressed: true,
+            }),
+        )
+        .0;
+        assert_eq!(
+            back, picked,
+            "coming back must restore exactly what was left"
+        );
     }
 
     #[test]
@@ -238,20 +307,30 @@ mod tests {
 
     #[test]
     fn the_pad_is_washed_with_the_colour_and_still_shows_its_indicators() {
-        let state = absorb(State::new(), Input::Pad(PadEvent::Encoder { index: 0, delta: 1 })).0;
+        let state = absorb(
+            State::new(),
+            Input::Pad(PadEvent::Encoder { index: 0, delta: 1 }),
+        )
+        .0;
         let cells = cells(&state);
         // LED 21 is outside the key grid, so it carries the plain wash.
         assert_eq!(cells[21], state.colour.cells()[21]);
         // Indicators sit on top: colour mode active, spotify dimmed.
         assert_eq!(cells[led_for_key(10).unwrap() as usize], colour::TINT);
-        assert_eq!(cells[led_for_key(11).unwrap() as usize], dimmed(spotify::TINT));
+        assert_eq!(
+            cells[led_for_key(11).unwrap() as usize],
+            dimmed(spotify::TINT)
+        );
     }
 
     #[test]
     fn an_inactive_mode_never_paints() {
         // Colour mode is active, so nothing Spotify holds may reach the pad
         // beyond its own indicator.
-        let state = State { spotify: spotify::State::new().absorb(spotify::Input::Playing(true)), ..State::new() };
+        let state = State {
+            spotify: spotify::State::new().absorb(spotify::Input::Playing(true)),
+            ..State::new()
+        };
         assert_eq!(cells(&state), cells(&State::new()));
     }
 }
