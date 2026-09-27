@@ -4,7 +4,7 @@ let
   bindingsHash = "sha256-Y994r/xOFxHdk7gsQLVsMkhCqZbsBdyLp5lJ7Ba2zhI=";
 in
 pkgs.rustPlatform.buildRustPackage {
-  pname = "anix";
+  pname = "apis";
   version = "0.1.0";
   src = ./.;
 
@@ -32,11 +32,11 @@ pkgs.rustPlatform.buildRustPackage {
     boehmgc
   ];
 
-  # Absolute paths to the tools anix shells out to, baked into the binary at
+  # Absolute paths to the tools apis shells out to, baked into the binary at
   # build time (read via option_env!), so no PATH wrapper is needed.
   env = {
-    ANIX_NIX = "${pkgs.nixVersions.latest}/bin/nix";
-    ANIX_NOM = "${pkgs.nix-output-monitor}/bin/nom";
-    ANIX_GIT = "${pkgs.git}/bin/git";
+    APIS_NIX = "${pkgs.nixVersions.latest}/bin/nix";
+    APIS_NOM = "${pkgs.nix-output-monitor}/bin/nom";
+    APIS_GIT = "${pkgs.git}/bin/git";
   };
 }

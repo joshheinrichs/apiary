@@ -1,4 +1,4 @@
-# anix — design
+# apis — design
 
 Pure, sandboxed `eval`/`build`/`instantiate`/`run`/`repl` over the repo you are
 standing in, without flakes. Rust over the Nix C API
@@ -7,7 +7,7 @@ standing in, without flakes. Rust over the Nix C API
 ## Two eval states, one impurity
 
 Pure eval cannot see the working tree and has no `builtins.currentSystem`, so
-anix runs one impure step and everything else pure.
+apis runs one impure step and everything else pure.
 
 1. **Impure.** Realise the source and read `builtins.currentSystem`. The source
    is the working tree (list it with `git`, add it to the store with
@@ -74,7 +74,7 @@ nom's live build tree. The CLI is the price of that output.
   only a guess and is wrong whenever a package's binary is named differently
   (`slippi-dolphin` ships `dolphin-emu` and `dolphin-emu-nogui`).
 - **`--expr` is pure.** It widens expressiveness, never reach.
-- Tool paths (`ANIX_NIX`, `ANIX_NOM`, `ANIX_GIT`) are baked in at build time via
+- Tool paths (`APIS_NIX`, `APIS_NOM`, `APIS_GIT`) are baked in at build time via
   `option_env!`, falling back to `PATH` so plain `cargo build` works.
 
 ## Constraints that will bite
@@ -83,10 +83,10 @@ nom's live build tree. The CLI is the price of that output.
   not found"). Pass it as `NIX_CONFIG=pure-eval=true` in the environment before
   constructing the second `EvalState`, which reads config at creation.
 - **Pure eval has no `builtins.currentSystem`, and `eval-system` does not
-  restore it.** anix reads the host system during the impure probe and applies
+  restore it.** apis reads the host system during the impure probe and applies
   the entry point with `builtins.intersectAttrs (builtins.functionArgs r)
   { system = …; }`, so a no-arg function or a plain-attrset entry still work.
-  One system axis, always the host: anix does not cross-compile and never offers
+  One system axis, always the host: apis does not cross-compile and never offers
   `localSystem`/`crossSystem`.
 - **`self` is a string, not a path.** `builtins.path` returns a string in Nix.
   `import self` and `self + "/x"` both work, but this differs from flakes, where
@@ -96,7 +96,7 @@ nom's live build tree. The CLI is the price of that output.
   string, or eval-config defaults to `builtins.currentSystem` and dies under pure
   eval. `nixpkgs.pkgs` would conflict with the config's own overlays and
   `allowUnfree` settings. See `pkgs/mainframe-system-applicator/default.nix`.
-- **`anix` links libnixexpr from `nixVersions.latest`**, so a nixpkgs bump that
+- **`apis` links libnixexpr from `nixVersions.latest`**, so a nixpkgs bump that
   moves the C API can break this package first. `nixVersions.nix_2_35` pins it.
 - **Known unfixed:** `mainframe-iso` fails under pure eval only — grub's
   `import-efisetjmp.patch` reported "not valid". It builds impurely.
