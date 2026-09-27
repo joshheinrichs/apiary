@@ -53,7 +53,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bubblewand"
+name = "seal"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -62,10 +62,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "bubblewand-generator"
+name = "seal-generator"
 version = "0.1.0"
 dependencies = [
- "bubblewand",
+ "seal",
  "clap",
  "shell-words",
 ]

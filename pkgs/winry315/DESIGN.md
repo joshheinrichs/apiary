@@ -141,9 +141,9 @@ channel, published as a latest value the renderer reads.
   ordinary music into the middle of the range, so the pad glowed at half
   brightness and nothing punched. The peak rises instantly and forgets with a
   2.5s half-life; `GAIN_FLOOR` stops silence being amplified into noise.
-- **That bus name is owned by bubbled-spotify's `xdg-dbus-proxy`, not Spotify.**
+- **That bus name is owned by sealed-spotify's `xdg-dbus-proxy`, not Spotify.**
   The `--dbus-own=org.mpris.MediaPlayer2.spotify` grant in
-  `pkgs/bubbled-spotify` is what makes the pad able to drive it. Tighten that
+  `pkgs/sealed-spotify` is what makes the pad able to drive it. Tighten that
   policy and the mode goes dead in a way that looks like a pad bug.
 - A missing session bus is not fatal: the daemon warns once and the pad still
   works as a colour picker. Individual call failures (Spotify not running) go to

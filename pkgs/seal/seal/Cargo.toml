@@ -1,14 +1,14 @@
 [package]
-name = "bubblewand"
+name = "seal"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "bubblewand"
+name = "seal"
 path = "src/lib.rs"
 
 [[bin]]
-name = "bubblewand"
+name = "seal"
 path = "src/main.rs"
 
 [dependencies]

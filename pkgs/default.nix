@@ -9,10 +9,10 @@ rec {
   fm1ctl = import ./fm1ctl { inherit pkgs; };
   fuzzel-window-switcher = import ./fuzzel-window-switcher { inherit pkgs; };
   home-applicator = import ./home-applicator { inherit pkgs; };
-  bubblewand = import ./bubblewand { inherit pkgs; };
-  bubbled-spotify = import ./bubbled-spotify { inherit pkgs bubblewand; };
-  bubbled-discord = import ./bubbled-discord { inherit pkgs bubblewand; };
-  bubbled-syncthing = import ./bubbled-syncthing { inherit pkgs bubblewand; };
+  seal = import ./seal { inherit pkgs; };
+  sealed-spotify = import ./sealed-spotify { inherit pkgs seal; };
+  sealed-discord = import ./sealed-discord { inherit pkgs seal; };
+  sealed-syncthing = import ./sealed-syncthing { inherit pkgs seal; };
   wlroots = import ./wlroots { inherit pkgs; };
   sway = import ./sway { inherit pkgs wlroots; };
   seatmux = import ./seatmux { inherit pkgs; };

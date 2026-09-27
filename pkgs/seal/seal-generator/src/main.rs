@@ -5,10 +5,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
-use bubblewand::SandboxArgs;
+use seal::SandboxArgs;
 
 #[derive(Parser)]
-#[command(name = "bubblewand-generator")]
+#[command(name = "seal-generator")]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -64,20 +64,20 @@ fn main() {
     match cli.command {
         Cmd::Install(args) => {
             if let Err(e) = run_install(&args) {
-                eprintln!("bubblewand-generator install: {}", e);
+                eprintln!("seal-generator install: {}", e);
                 std::process::exit(1);
             }
         }
         Cmd::Exec(args) => {
             let err = run_exec(args);
-            eprintln!("bubblewand-generator exec: {}", err);
+            eprintln!("seal-generator exec: {}", err);
             std::process::exit(1);
         }
     }
 }
 
 fn run_exec(args: ExecArgs) -> std::io::Error {
-    const BUBBLEWAND: &str = match option_env!("BUBBLEWAND") { Some(s) => s, None => "bubblewand" };
+    const SEAL: &str = match option_env!("SEAL") { Some(s) => s, None => "seal" };
 
     let mut flags = args.sandbox.to_cli_args();
     if let Some(ref path_file) = args.ro_bind_file {
@@ -99,12 +99,12 @@ fn run_exec(args: ExecArgs) -> std::io::Error {
     }
 
     use std::os::unix::process::CommandExt;
-    std::process::Command::new(BUBBLEWAND).args(&flags).exec()
+    std::process::Command::new(SEAL).args(&flags).exec()
 }
 
 fn run_install(args: &InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
-    const BUBBLEWAND: &str = match option_env!("BUBBLEWAND") { Some(s) => s, None => "bubblewand" };
-    let bubblewand_bin = PathBuf::from(BUBBLEWAND);
+    const SEAL: &str = match option_env!("SEAL") { Some(s) => s, None => "seal" };
+    let seal_bin = PathBuf::from(SEAL);
     let mut flags = args.sandbox.to_cli_args();
 
     if let Some(ref path_file) = args.ro_bind_file {
@@ -135,7 +135,7 @@ fn run_install(args: &InstallArgs) -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            let script = wrapper_script(&bubblewand_bin, &flags, &src_path);
+            let script = wrapper_script(&seal_bin, &flags, &src_path);
             write_executable(&out_bin.join(&name), &script)?;
         }
     }
@@ -193,9 +193,9 @@ fn write_executable(dest: &Path, content: &str) -> Result<(), Box<dyn std::error
 // Pure functions
 // ---------------------------------------------------------------------------
 
-/// Generate a one-line wrapper script that execs bubblewand with the right flags.
-fn wrapper_script(bubblewand: &Path, flags: &[String], exe: &Path) -> String {
-    let mut args = vec![bubblewand.to_string_lossy().into_owned()];
+/// Generate a one-line wrapper script that execs seal with the right flags.
+fn wrapper_script(seal: &Path, flags: &[String], exe: &Path) -> String {
+    let mut args = vec![seal.to_string_lossy().into_owned()];
     args.extend_from_slice(flags);
     args.push("--".into());
     args.push(exe.to_string_lossy().into_owned());
@@ -243,7 +243,7 @@ fn patch_desktop(content: &str, src_bins: &[String], out_bin: &Path) -> String {
     }
 
     if !replaced {
-        eprintln!("bubblewand-generator: warning: no Exec= lines replaced in desktop file");
+        eprintln!("seal-generator: warning: no Exec= lines replaced in desktop file");
     }
     if !content.ends_with('\n') {
         out.pop();
@@ -328,18 +328,18 @@ mod tests {
     fn wrapper_script_bare_paths() {
         assert_eq!(
             wrapper_script(
-                Path::new("/out/bin/bubblewand"),
+                Path::new("/out/bin/seal"),
                 &["--gui".into(), "--network".into()],
                 Path::new("/nix/store/abc/bin/spotify"),
             ),
-            "#!/bin/sh\nexec /out/bin/bubblewand --gui --network -- /nix/store/abc/bin/spotify \"$@\"\n",
+            "#!/bin/sh\nexec /out/bin/seal --gui --network -- /nix/store/abc/bin/spotify \"$@\"\n",
         );
     }
 
     #[test]
     fn wrapper_script_quotes_special_chars() {
         let out = wrapper_script(
-            Path::new("/out/bin/bubblewand"),
+            Path::new("/out/bin/seal"),
             &["--dbus-talk=org.freedesktop.portal.*".into()],
             Path::new("/nix/store/abc/bin/app"),
         );

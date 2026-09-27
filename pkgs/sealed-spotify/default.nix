@@ -1,15 +1,15 @@
-{ pkgs, bubblewand }:
+{ pkgs, seal }:
 let
   closure = pkgs.closureInfo {
     rootPaths = [ pkgs.spotify ];
   };
 in
-pkgs.runCommand "bubbled-spotify"
+pkgs.runCommand "sealed-spotify"
   {
-    nativeBuildInputs = [ bubblewand.generator ];
+    nativeBuildInputs = [ seal.generator ];
   }
   ''
-    bubblewand-generator install \
+    seal-generator install \
       --gui \
       --gpu-render \
       --cage \

@@ -8,14 +8,14 @@ let
   runtime = pkgs.rustPlatform.buildRustPackage (
     common
     // {
-      pname = "bubblewand";
+      pname = "seal";
       cargoBuildFlags = [
         "--package"
-        "bubblewand"
+        "seal"
       ];
       cargoTestFlags = [
         "--package"
-        "bubblewand"
+        "seal"
       ];
       # Bake dependency paths into the binary at compile time
       BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
@@ -35,17 +35,17 @@ in
   generator = pkgs.rustPlatform.buildRustPackage (
     common
     // {
-      pname = "bubblewand-generator";
+      pname = "seal-generator";
       cargoBuildFlags = [
         "--package"
-        "bubblewand-generator"
+        "seal-generator"
       ];
       cargoTestFlags = [
         "--package"
-        "bubblewand-generator"
+        "seal-generator"
       ];
       # Bake the runtime path into the generator at compile time
-      BUBBLEWAND = "${runtime}/bin/bubblewand";
+      SEAL = "${runtime}/bin/seal";
     }
   );
 }

@@ -1,4 +1,4 @@
-{ pkgs, bubblewand }:
+{ pkgs, seal }:
 let
   closure = pkgs.closureInfo {
     rootPaths = [
@@ -8,13 +8,13 @@ let
     ];
   };
 in
-pkgs.runCommand "bubbled-discord"
+pkgs.runCommand "sealed-discord"
   {
-    nativeBuildInputs = [ bubblewand.generator ];
+    nativeBuildInputs = [ seal.generator ];
   }
   ''
     # --share-tmp: electron singleton socket lives in /tmp
-    bubblewand-generator install \
+    seal-generator install \
       --gui \
       --gpu-render \
       --wayland \

@@ -1,0 +1,3 @@
+[workspace]
+members = ["seal", "seal-generator"]
+resolver = "2"

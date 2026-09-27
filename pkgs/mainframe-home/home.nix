@@ -160,10 +160,10 @@ in
     qbittorrent
     vlc
     obs-studio
-    apiary.bubblewand.runtime
-    apiary.bubblewand.generator
-    apiary.bubbled-spotify
-    apiary.bubbled-discord
+    apiary.seal.runtime
+    apiary.seal.generator
+    apiary.sealed-spotify
+    apiary.sealed-discord
     ripgrep
     jq
     bat
@@ -510,9 +510,9 @@ in
       };
     };
 
-    bubbled-syncthing =
+    sealed-syncthing =
       let
-        pkg = apiary.bubbled-syncthing.override {
+        pkg = apiary.sealed-syncthing.override {
           extraArgs = [
             "--pasta-tcp=127.0.0.1/8384"
             "--rw-bind=/home/josh/syncthing:/home/josh/syncthing"
@@ -520,7 +520,7 @@ in
         };
       in
       {
-        Unit.Description = "Sandboxed Syncthing (bubblewand + pasta)";
+        Unit.Description = "Sandboxed Syncthing (seal + pasta)";
         Service = {
           ExecStart = "${pkg}/bin/syncthing --no-browser";
           Restart = "on-failure";
@@ -537,7 +537,7 @@ in
     };
   };
 
-  # Replaced by sandboxed bubbled-syncthing; see systemd.user.services.bubbled-syncthing below.
+  # Replaced by sandboxed sealed-syncthing; see systemd.user.services.sealed-syncthing below.
   # services.syncthing.enable = true;
   services.gnome-keyring = {
     enable = true;

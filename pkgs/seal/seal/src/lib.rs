@@ -294,7 +294,7 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     let dbus = if args.need_dbus() {
         match spawn_dbus_proxy(args, &xdg_runtime) {
             Ok(d) => Some(d),
-            Err(e) => { eprintln!("bubblewand: dbus proxy failed: {}", e); None }
+            Err(e) => { eprintln!("seal: dbus proxy failed: {}", e); None }
         }
     } else {
         None
@@ -321,7 +321,7 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     };
 
     let cage_dir = if args.cage {
-        let dir = format!("{}/bubblewand-cage-{}", xdg_runtime, unsafe { libc::getpid() });
+        let dir = format!("{}/seal-cage-{}", xdg_runtime, unsafe { libc::getpid() });
         if let Err(e) = fs::create_dir_all(&dir) {
             return io::Error::new(e.kind(), format!("cage dir: {}", e));
         }
@@ -336,7 +336,7 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     cmd.proc("/proc");
     cmd.dev("/dev");
     if let Some(ref name) = args.share_tmp {
-        let scoped = PathBuf::from(&xdg_runtime).join("bubblewand").join(name);
+        let scoped = PathBuf::from(&xdg_runtime).join("seal").join(name);
         let _ = fs::create_dir_all(&scoped);
         cmd.bind(scoped, "/tmp");
     } else {
@@ -348,10 +348,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
     // Home: persistent or ephemeral
     if let Some(ref name) = args.persist_home {
-        let xdg_bp = BaseDirectories::with_prefix("bubblewand");
+        let xdg_bp = BaseDirectories::with_prefix("seal");
         let persist = xdg_bp
             .create_data_directory(format!("{}/home", name))
-            .unwrap_or_else(|_| PathBuf::from(&home).join(format!(".local/share/bubblewand/{}/home", name)));
+            .unwrap_or_else(|_| PathBuf::from(&home).join(format!(".local/share/seal/{}/home", name)));
         cmd.bind(persist, &home);
     } else {
         cmd.dir(&home);
@@ -688,7 +688,7 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
     }
     let (parent_fd, proxy_fd) = (fds[0], fds[1]);
 
-    let socket = format!("{}/bubblewand-dbus.sock", xdg_runtime);
+    let socket = format!("{}/seal-dbus.sock", xdg_runtime);
 
     let mut cmd = Command::new(XDG_DBUS_PROXY);
     cmd.arg(&dbus_addr)
@@ -745,7 +745,7 @@ struct PipewireProxy {
 
 fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<PipewireProxy> {
     use std::os::unix::process::CommandExt;
-    let name = format!("bubblewand-pw-{}", unsafe { libc::getpid() });
+    let name = format!("seal-pw-{}", unsafe { libc::getpid() });
     let socket = format!("{}/{}", xdg_runtime, name);
     let conf = if capture { PIPEWIRE_SANDBOX_CAPTURE_CONF } else { PIPEWIRE_SANDBOX_CONF };
 
@@ -871,7 +871,7 @@ fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]
         }
     };
     let Some(pid) = child_pid else {
-        eprintln!("bubblewand: pasta: could not read child PID from bwrap info-fd");
+        eprintln!("seal: pasta: could not read child PID from bwrap info-fd");
         return 1;
     };
     unsafe { libc::close(info_fd) };
@@ -923,13 +923,13 @@ fn orchestrator_main(info_fd: i32, block_fd: i32, tcp: &[String], udp: &[String]
     let status = match cmd.status() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("bubblewand: pasta: failed to spawn: {}", e);
+            eprintln!("seal: pasta: failed to spawn: {}", e);
             let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
             return 1;
         }
     };
     if !status.success() {
-        eprintln!("bubblewand: pasta: setup failed: {}", status);
+        eprintln!("seal: pasta: setup failed: {}", status);
         let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
         return 1;
     }

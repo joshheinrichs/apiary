@@ -36,7 +36,7 @@ in
     mainframe-home-applicator
     mainframe-iso
     blog
-    bubbled-syncthing
+    sealed-syncthing
     gaggimate
     crosspoint-reader
     slippi-dolphin

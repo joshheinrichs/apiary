@@ -1,6 +1,6 @@
 //! Driving Spotify over MPRIS.
 //!
-//! The bus name is owned by bubbled-spotify's `xdg-dbus-proxy`, not Spotify
+//! The bus name is owned by sealed-spotify's `xdg-dbus-proxy`, not Spotify
 //! itself; the proxy's `--dbus-own` grant is what makes this reachable.
 //! Tighten that policy and the mode goes dead in a way that looks like a pad
 //! bug.

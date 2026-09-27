@@ -1,13 +1,13 @@
-# bubblewand spec
+# seal spec
 
 ## Overview
 
-bubblewand is a thin wrapper around `bwrap` (bubblewrap) for NixOS. It provides two binaries:
+seal is a thin wrapper around `bwrap` (bubblewrap) for NixOS. It provides two binaries:
 
-- **`bubblewand`** — runtime: takes flags + a command, builds bwrap args, and execs into the sandbox.
-- **`bubblewand-generator`** — build-time tool: takes the same flags + a package path, and emits a wrapper script (and patched `.desktop` files) that call `bubblewand` with the baked-in flags.
+- **`seal`** — runtime: takes flags + a command, builds bwrap args, and execs into the sandbox.
+- **`seal-generator`** — build-time tool: takes the same flags + a package path, and emits a wrapper script (and patched `.desktop` files) that call `seal` with the baked-in flags.
 
-Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in as store paths. The generator also bakes in the path to the `bubblewand` runtime.
+Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in as store paths. The generator also bakes in the path to the `seal` runtime.
 
 ---
 
@@ -31,9 +31,9 @@ Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in 
 
 ### Home
 
-`--persist-home=NAME` — bind-mounts `$XDG_DATA_HOME/bubblewand/NAME/home` as the sandbox home. Without it, home is an empty ephemeral directory.
+`--persist-home=NAME` — bind-mounts `$XDG_DATA_HOME/seal/NAME/home` as the sandbox home. Without it, home is an empty ephemeral directory.
 
-`--share-tmp=NAME` — bind-mounts `$XDG_RUNTIME_DIR/bubblewand/NAME` as the sandbox `/tmp` instead of an isolated tmpfs. Use this when multiple instances of the same sandboxed app need to share `/tmp` (e.g. for Electron's singleton socket). `$XDG_RUNTIME_DIR` is user-owned (mode 0700) and cleared on logout.
+`--share-tmp=NAME` — bind-mounts `$XDG_RUNTIME_DIR/seal/NAME` as the sandbox `/tmp` instead of an isolated tmpfs. Use this when multiple instances of the same sandboxed app need to share `/tmp` (e.g. for Electron's singleton socket). `$XDG_RUNTIME_DIR` is user-owned (mode 0700) and cleared on logout.
 
 ### DBus filtering
 
@@ -79,7 +79,7 @@ The bwrap invocation is built in this order:
 
 ### Home
 
-Persistent: `--bind $XDG_DATA_HOME/bubblewand/NAME $HOME`  
+Persistent: `--bind $XDG_DATA_HOME/seal/NAME $HOME`  
 Ephemeral: `--dir $HOME`
 
 ### /etc
@@ -121,9 +121,9 @@ bwrap is told to communicate setup with a sibling orchestrator process via two p
 
 The orchestration sequence:
 
-1. Before forking the dbus proxy / before exec, bubblewand creates `info_pipe` (orchestrator reads, bwrap writes) and `block_pipe` (orchestrator writes, bwrap reads).
-2. bubblewand forks the **pasta orchestrator** child. The orchestrator-side ends are kept open in the child; the bwrap-side ends have `FD_CLOEXEC` cleared in the parent so they survive `exec` into bwrap.
-3. bubblewand `exec`s into bwrap with `--info-fd` / `--block-fd` referring to the bwrap-side fd numbers.
+1. Before forking the dbus proxy / before exec, seal creates `info_pipe` (orchestrator reads, bwrap writes) and `block_pipe` (orchestrator writes, bwrap reads).
+2. seal forks the **pasta orchestrator** child. The orchestrator-side ends are kept open in the child; the bwrap-side ends have `FD_CLOEXEC` cleared in the parent so they survive `exec` into bwrap.
+3. seal `exec`s into bwrap with `--info-fd` / `--block-fd` referring to the bwrap-side fd numbers.
 4. bwrap creates namespaces, writes `{"child-pid": N}` to `info_pipe`, blocks on `block_pipe`.
 5. Orchestrator reads the PID and runs `pasta --quiet --config-net --host-lo-to-ns-lo -T none -U none --userns /proc/<PID>/ns/user --netns /proc/<PID>/ns/net [-t SPEC|none] [-u SPEC|none]`, then waits for it to exit.
 
@@ -214,16 +214,16 @@ PATH is not set automatically. Use `--set-env=PATH=...` to set it explicitly.
 
 ### DBus proxy (if --dbus-talk or --dbus-own)
 
-xdg-dbus-proxy is started before bwrap with `--filter` and the specified `--talk`/`--own` names. A `socketpair(AF_UNIX, SOCK_STREAM)` is used: the proxy writes a zero byte to its end when ready; bubblewand reads that byte before proceeding, ensuring the proxy is accepting connections before bwrap starts.
+xdg-dbus-proxy is started before bwrap with `--filter` and the specified `--talk`/`--own` names. A `socketpair(AF_UNIX, SOCK_STREAM)` is used: the proxy writes a zero byte to its end when ready; seal reads that byte before proceeding, ensuring the proxy is accepting connections before bwrap starts.
 
-The socket appears at `$XDG_RUNTIME_DIR/bubblewand-dbus.sock` and is bound into the sandbox:
+The socket appears at `$XDG_RUNTIME_DIR/seal-dbus.sock` and is bound into the sandbox:
 
 ```
---ro-bind $XDG_RUNTIME_DIR/bubblewand-dbus.sock $XDG_RUNTIME_DIR/bus
+--ro-bind $XDG_RUNTIME_DIR/seal-dbus.sock $XDG_RUNTIME_DIR/bus
 --setenv DBUS_SESSION_BUS_ADDRESS unix:path=$XDG_RUNTIME_DIR/bus
 ```
 
-The proxy's lifetime is tied to bwrap: bubblewand keeps the parent end of the socketpair open across `exec` into bwrap, so when bwrap exits the socket closes and the proxy sees `POLLHUP` and exits.
+The proxy's lifetime is tied to bwrap: seal keeps the parent end of the socketpair open across `exec` into bwrap, so when bwrap exits the socket closes and the proxy sees `POLLHUP` and exits.
 
 ### User-supplied overrides (appended last)
 
@@ -242,10 +242,10 @@ The proxy's lifetime is tied to bwrap: bubblewand keeps the parent end of the so
 ### Usage
 
 ```
-bubblewand-generator [flags] <source-pkg> <output-dir>
+seal-generator [flags] <source-pkg> <output-dir>
 ```
 
-Accepts all the same flags as `bubblewand`, plus:
+Accepts all the same flags as `seal`, plus:
 
 `--bin=NAME` — only wrap the named binary (may be repeated; default: all executables).  
 `--ro-bind-file=FILE` — file containing paths to bind read-only, one per line. Each path is bound to itself (`--ro-bind PATH PATH`). Baked into the wrapper at build time — no runtime file reads. Use with `closureInfo` to restrict the sandbox to only the paths the app needs rather than the entire store.
@@ -256,7 +256,7 @@ For each executable in `<source-pkg>/bin/`:
 
 ```sh
 #!/bin/sh
-exec bubblewand [flags] [--ro-bind=PATH:PATH ...] -- /nix/store/.../bin/<exe> "$@"
+exec seal [flags] [--ro-bind=PATH:PATH ...] -- /nix/store/.../bin/<exe> "$@"
 ```
 
 `.desktop` files have their `Exec=` and `TryExec=` lines rewritten to point at the wrapped binary. Icons are symlinked.

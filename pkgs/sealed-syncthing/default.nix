@@ -1,4 +1,4 @@
-{ pkgs, bubblewand }:
+{ pkgs, seal }:
 pkgs.lib.makeOverridable (
   {
     extraArgs ? [ "--pasta-tcp=127.0.0.1/8384" ],
@@ -6,12 +6,12 @@ pkgs.lib.makeOverridable (
   let
     closure = pkgs.closureInfo { rootPaths = [ pkgs.syncthing ]; };
   in
-  pkgs.runCommand "bubbled-syncthing"
+  pkgs.runCommand "sealed-syncthing"
     {
-      nativeBuildInputs = [ bubblewand.generator ];
+      nativeBuildInputs = [ seal.generator ];
     }
     ''
-      bubblewand-generator install \
+      seal-generator install \
         --persist-home=syncthing \
         --pasta \
         --bin=syncthing \
