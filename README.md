@@ -4,17 +4,17 @@ under construction
 
 ## usage
 
-bootstrap apis
+bootstrap anix
 
 ```bash
-nix-build -A apis
+nix-build -A anix
 ```
 
 ```bash
-apis run mainframe-system-applicator
+anix run mainframe-system-applicator
 ```
 
-`mainframe-home-applicator` puts `apis` on `PATH`, so after the first run the
+`mainframe-home-applicator` puts `anix` on `PATH`, so after the first run the
 `./result/bin/` prefix is no longer needed.
 
 ## goals

@@ -152,7 +152,7 @@ in
   # The home.packages option allows you to install Nix packages into your
   # environment.
   home.packages = with pkgs; [
-    apiary.apis
+    apiary.anix
     apiary.steam
     keepassxc
     libsecret

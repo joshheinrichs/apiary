@@ -1,9 +1,9 @@
-# apis
+# anix
 
 - Pure eval, without flakes. No `flake.nix`, no inputs schema, no lock file —
   just the good parts: the working tree as source, and a sandboxed eval scoped
   to the folder I'm standing in.
-- The repo is a function library. apis is one more entry point over it, not a
+- The repo is a function library. anix is one more entry point over it, not a
   framework around it.
 - Name: Latin for "bee", the `api-` root in apiary — and a pun, since the repo
   is meant to be consumed as a library.
@@ -13,13 +13,13 @@
 - It has to work in a dirty repo. The working tree is the source: tracked and
   untracked files alike, exactly as they are on disk right now.
 - Gitignored files are the only thing filtered out. That's the rule — if git
-  ignores it, apis doesn't see it.
+  ignores it, anix doesn't see it.
 - Symlinks into `/nix/store` stay out too, `./result*` included. Otherwise a
   build repoints one and the snapshot invalidates itself.
-- apis can only ever see the folder I'm in. That's the invariant.
+- anix can only ever see the folder I'm in. That's the invariant.
 - `--ref` to run a version that isn't in the checkout — a branch, tag or sha
   instead of the working tree. Still the same folder, just an older tree.
-- `--expr` widens what I can *say*, not what apis can *reach* — it stays pure.
+- `--expr` widens what I can *say*, not what anix can *reach* — it stays pure.
   An impure escape would have to be its own explicit flag.
 
 ## Shape

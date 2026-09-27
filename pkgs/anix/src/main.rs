@@ -1,11 +1,11 @@
-//! apis — evaluate/build/run/repl rooted at the git working tree you're standing
+//! anix — evaluate/build/run/repl rooted at the git working tree you're standing
 //! in, sandboxed (pure eval) so it can only ever see that folder.
 //!
 //! Model: one irreducible impure step snapshots the source — the git-filtered
 //! working tree (dirty TRACKED files in, untracked/gitignored out), or the tree
 //! of a commit with `--ref` — grabs its narHash, and reads the host system.
 //! Everything after that is pure eval with `self` locked to that snapshot and
-//! the host system injected — pure eval has no `currentSystem`, so apis
+//! the host system injected — pure eval has no `currentSystem`, so anix
 //! supplies it.
 //!
 //! Structure: the pure core (below) only builds Nix expression strings and makes
@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------------------
 
 #[derive(Parser)]
-#[command(name = "apis", about = "Pure, sandboxed eval/build/run/repl rooted at the repo you're in")]
+#[command(name = "anix", about = "Pure, sandboxed eval/build/run/repl rooted at the repo you're in")]
 struct Cli {
     /// Git revision to evaluate instead of the working tree: a branch, tag, sha,
     /// or anything `git rev-parse` takes (`HEAD~3`, `v1.2`).
@@ -103,7 +103,7 @@ fn allowed_paths(files: &[String]) -> BTreeSet<String> {
 }
 
 /// Where `self` comes from: the working tree as it is on disk, or a committed
-/// revision — the only way apis reaches a version not in the checkout.
+/// revision — the only way anix reaches a version not in the checkout.
 enum Source {
     WorkingTree(Vec<String>),
     Revision(String),
@@ -338,7 +338,7 @@ fn eval_in_repo(es: &mut EvalState, root: &str, locked: &Locked, body: &str) -> 
 
 /// Instantiate a derivation value: force it enough to write its `.drv` to the
 /// store and return its (outPath, drvPath). Both are known at eval time, before
-/// any building — so apis owns the output path and lets `nix build` realise it.
+/// any building — so anix owns the output path and lets `nix build` realise it.
 fn instantiate(es: &mut EvalState, v: &Value) -> Result<(String, String)> {
     if es.value_type(v)? != ValueType::AttrSet {
         bail!("value is not a derivation");
@@ -440,20 +440,20 @@ fn exec(exe: &Path, args: &[String]) -> Result<()> {
     Err(err).with_context(|| format!("exec {}", exe.display()))
 }
 
-/// Absolute paths to the tools apis shells out to, baked in at build time (no
+/// Absolute paths to the tools anix shells out to, baked in at build time (no
 /// PATH wrapper needed). Falls back to a PATH lookup for plain `cargo` builds.
 fn nix_bin() -> &'static str {
-    option_env!("APIS_NIX").unwrap_or("nix")
+    option_env!("ANIX_NIX").unwrap_or("nix")
 }
 fn nom_bin() -> &'static str {
-    option_env!("APIS_NOM").unwrap_or("nom")
+    option_env!("ANIX_NOM").unwrap_or("nom")
 }
 fn git_bin() -> &'static str {
-    option_env!("APIS_GIT").unwrap_or("git")
+    option_env!("ANIX_GIT").unwrap_or("git")
 }
 
 /// Realise a derivation, streaming `nix build`'s internal-json log through
-/// `nom` (nix-output-monitor) for a live build tree. apis already knows the
+/// `nom` (nix-output-monitor) for a live build tree. anix already knows the
 /// output path, so nom doesn't need to report anything back.
 fn realise(drv_path: &str) -> Result<()> {
     use std::process::Stdio;
@@ -570,9 +570,9 @@ mod tests {
 
     #[test]
     fn allowed_paths_includes_every_ancestor_directory() {
-        let files = vec!["pkgs/apis/src/main.rs".to_string(), "README.md".to_string()];
+        let files = vec!["pkgs/anix/src/main.rs".to_string(), "README.md".to_string()];
         let allowed = allowed_paths(&files);
-        for want in ["pkgs", "pkgs/apis", "pkgs/apis/src", "pkgs/apis/src/main.rs", "README.md"] {
+        for want in ["pkgs", "pkgs/anix", "pkgs/anix/src", "pkgs/anix/src/main.rs", "README.md"] {
             assert!(allowed.contains(want), "missing {want}");
         }
         assert!(!allowed.contains("pkgs/other"));
