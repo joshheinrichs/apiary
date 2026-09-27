@@ -31,6 +31,7 @@ let
 in
 {
   inherit (apiary)
+    apiary-fmt
     mainframe-system-applicator
     mainframe-home
     mainframe-home-applicator

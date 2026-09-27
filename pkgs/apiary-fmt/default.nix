@@ -11,13 +11,12 @@ pkgs.rustPlatform.buildRustPackage {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
-  postPatch = ''
-    substituteInPlace src/main.rs \
-      --replace-fail '@git@' '${pkgs.git}/bin/git' \
-      --replace-fail '@nixfmt@' '${pkgs.nixfmt}/bin/nixfmt' \
-      --replace-fail '@statix@' '${pkgs.statix}/bin/statix' \
-      --replace-fail '@cargo@' '${pkgs.cargo}/bin/cargo' \
-      --replace-fail '@cargoFmt@' '${pkgs.rustfmt}/bin/cargo-fmt' \
-      --replace-fail '@rustfmt@' '${pkgs.rustfmt}/bin/rustfmt'
-  '';
+  env = {
+    GIT = "${pkgs.git}/bin/git";
+    NIXFMT = "${pkgs.nixfmt}/bin/nixfmt";
+    STATIX = "${pkgs.statix}/bin/statix";
+    RUST_CARGO = "${pkgs.cargo}/bin/cargo";
+    RUST_CARGO_FMT = "${pkgs.rustfmt}/bin/cargo-fmt";
+    RUSTFMT = "${pkgs.rustfmt}/bin/rustfmt";
+  };
 }

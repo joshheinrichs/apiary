@@ -4,12 +4,12 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GIT: &str = "@git@";
-const NIXFMT: &str = "@nixfmt@";
-const STATIX: &str = "@statix@";
-const CARGO: &str = "@cargo@";
-const CARGO_FMT: &str = "@cargoFmt@";
-const RUSTFMT: &str = "@rustfmt@";
+const GIT: &str = env!("GIT");
+const NIXFMT: &str = env!("NIXFMT");
+const STATIX: &str = env!("STATIX");
+const CARGO: &str = env!("RUST_CARGO");
+const CARGO_FMT: &str = env!("RUST_CARGO_FMT");
+const RUSTFMT: &str = env!("RUSTFMT");
 
 fn main() -> Result<()> {
     let root = repo_root()?;
