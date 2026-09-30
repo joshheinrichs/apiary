@@ -11,10 +11,27 @@ fn home_dir() -> PathBuf {
     dirs::home_dir().expect("HOME not set")
 }
 
+const NIX_STORE: &str = env!("NIX_STORE_BIN");
+
 fn state_path() -> PathBuf {
     dirs::state_dir()
         .expect("XDG_STATE_HOME not set")
         .join("home-applicator/current")
+}
+
+/// Keep the applied home and its closure alive: an indirect GC root beside the state file.
+fn add_gc_root(home_files: &Path) -> Result<()> {
+    let root = state_path().with_file_name("gcroot");
+    let status = Command::new(NIX_STORE)
+        .arg("--add-root")
+        .arg(&root)
+        .arg("--realise")
+        .arg(home_files)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .context("running nix-store --add-root")?;
+    anyhow::ensure!(status.success(), "nix-store --add-root {} failed", root.display());
+    Ok(())
 }
 
 fn relative_paths(root: &Path) -> Result<HashSet<PathBuf>> {
@@ -168,9 +185,15 @@ fn main() -> Result<()> {
         .ok()
         .map(|s| PathBuf::from(s.trim()));
 
-    if let Some(ref old) = old_home_files {
-        eprintln!("previous: {}", old.display());
-        remove_old_symlinks(old)?;
+    match old_home_files {
+        Some(ref old) if old.exists() => {
+            eprintln!("previous: {}", old.display());
+            remove_old_symlinks(old)?;
+        }
+        // Collected before it was rooted: its links can no longer be told apart, so
+        // the new ones just replace whatever is at their paths.
+        Some(ref old) => eprintln!("previous {} is gone; not removing old links", old.display()),
+        None => {}
     }
 
     create_new_symlinks(&new_home_files)?;
@@ -180,6 +203,7 @@ fn main() -> Result<()> {
     if let Some(parent) = state.parent() {
         fs::create_dir_all(parent)?;
     }
+    add_gc_root(&new_home_files)?;
     fs::write(&state, new_home_files.to_string_lossy().as_bytes())?;
 
     eprintln!("done");
