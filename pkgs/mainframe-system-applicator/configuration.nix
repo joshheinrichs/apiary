@@ -41,6 +41,9 @@ in
 
   fileSystems."/".options = [ "compress=zstd" ];
 
+  zramSwap.enable = true;
+  boot.kernelParams = [ "zswap.enabled=0" ];
+
   nix.package = pkgs.nixVersions.latest;
 
   networking.hostName = "nixos"; # Define your hostname.
