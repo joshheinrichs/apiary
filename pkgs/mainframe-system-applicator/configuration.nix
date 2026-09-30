@@ -39,6 +39,8 @@ in
     "kernel.kptr_restrict" = 0;
   };
 
+  fileSystems."/".options = [ "compress=zstd" ];
+
   nix.package = pkgs.nixVersions.latest;
 
   networking.hostName = "nixos"; # Define your hostname.
