@@ -530,6 +530,7 @@ in
 
   nix = {
     package = pkgs.nix;
+    nixPath = [ "nixpkgs=${pkgs.path}" ];
     settings = {
       extra-experimental-features = "nix-command";
     };
