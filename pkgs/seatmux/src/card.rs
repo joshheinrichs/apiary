@@ -8,6 +8,7 @@
 use anyhow::{Context, Result, anyhow};
 use drm::Device as _;
 use drm::control::{Device as ControlDevice, LeaseId, PlaneType, property};
+use std::collections::HashSet;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 
 use crate::lease::{Connector, Crtc, LeasePlan, Plane, PlaneKind, Resources};
@@ -54,10 +55,11 @@ impl<F: AsFd> Card<F> {
     /// `possible_crtcs` masks are expressed as bit positions into the card's
     /// CRTC list, so the index each CRTC occupies here is load-bearing and is
     /// carried through to planning.
-    /// `probe` forces a connector re-probe rather than trusting cached state.
+    /// Connectors outside `leased` are force-probed rather than trusted from
+    /// cached state; leased ones belong to a running compositor and are left alone.
     /// After boot nothing may have probed yet, and an unprobed connector reads
     /// as `Unknown` — indistinguishable from disconnected.
-    pub fn resources(&self, probe: bool) -> Result<Resources> {
+    pub fn resources(&self, leased: &HashSet<u32>) -> Result<Resources> {
         let handles = self
             .resource_handles()
             .context("reading resource handles")?;
@@ -83,7 +85,7 @@ impl<F: AsFd> Card<F> {
         let mut connectors = Vec::new();
         for handle in handles.connectors() {
             let info = self
-                .get_connector(*handle, probe)
+                .get_connector(*handle, !leased.contains(&u32::from(*handle)))
                 .with_context(|| format!("reading connector {handle:?}"))?;
 
             let mut possible = 0u32;

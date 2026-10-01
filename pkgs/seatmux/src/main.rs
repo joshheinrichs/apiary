@@ -397,21 +397,23 @@ fn start_ready_seats(
         return Ok(());
     }
 
+    // Objects already out on a lease must not be planned twice; the kernel
+    // would refuse, and a running seat would lose its scanout.
+    let taken = leased_objects(seats);
+
     // Probe: after boot an untouched connector reports Unknown, which would
     // silently look like "nothing plugged in" forever. A forced probe reads
-    // EDID over DDC, which is not free, so say when it is slow enough to
-    // matter, since it runs on every tick until a seat starts.
+    // EDID over DDC under the card's mode_config lock, so it runs only on
+    // connectors no seat holds, and says when it is slow enough to matter,
+    // since it runs on every tick until a seat starts.
     let probe_started = Instant::now();
-    let resources = card.resources(true)?;
+    let resources = card.resources(&taken)?;
     if probe_started.elapsed() > Duration::from_millis(250) {
         log(&format!(
             "connector probe took {:?}",
             probe_started.elapsed()
         ));
     }
-    // Objects already out on a lease must not be planned twice; the kernel
-    // would refuse, and a running seat would lose its scanout.
-    let taken = leased_objects(seats);
     let free = without(&resources, &taken);
 
     let candidates: Vec<Seat> = wanted.iter().map(|i| seats[*i].config.clone()).collect();
@@ -470,7 +472,7 @@ fn start_ready_seats(
         };
 
         let socket = seats[index].listener.path.clone();
-        match child::spawn(&seats[index].config, lease.fd, &socket) {
+        match child::spawn(&seats[index].config, lease.fd, plan.objects(), &socket) {
             Ok(spawned) => {
                 log(&format!(
                     "seat '{}' started on {:?}",
@@ -490,18 +492,11 @@ fn start_ready_seats(
 }
 
 fn leased_objects(seats: &[SeatRuntime]) -> HashSet<u32> {
-    let mut taken = HashSet::new();
-    for runtime in seats.iter() {
-        let Some(spawned) = runtime.child.as_ref() else {
-            continue;
-        };
-        if let Ok(resources) = drm::control::get_lease(&spawned.lease) {
-            taken.extend(resources.crtcs.iter().map(|h| u32::from(*h)));
-            taken.extend(resources.planes.iter().map(|h| u32::from(*h)));
-            taken.extend(resources.connectors.iter().map(|h| u32::from(*h)));
-        }
-    }
-    taken
+    seats
+        .iter()
+        .filter_map(|runtime| runtime.child.as_ref())
+        .flat_map(|spawned| spawned.objects.iter().copied())
+        .collect()
 }
 
 fn without(resources: &Resources, taken: &HashSet<u32>) -> Resources {

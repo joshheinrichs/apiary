@@ -396,8 +396,16 @@ Ordered roughly by how long each one hid.
   and never reaches DRM, with no error. `child::spawn` clears both.
 - **Connectors read `Unknown` until probed.** After boot nothing may have probed
   yet, and an unprobed connector is indistinguishable from a disconnected one —
-  so every seat looks absent forever. `resources(probe: true)` forces it while
-  any seat is waiting to start.
+  so every seat looks absent forever. `resources` forces it while any seat is
+  waiting to start — but only on connectors no lease holds: a forced probe reads
+  EDID under the card's mode_config lock, and doing it to live monitors every tick
+  hitches the running seats.
+- **Never ioctl a child's lease fd.** seatmux and the compositor share that open
+  file, and the kernel tracks one owning pid per file: when the caller changes,
+  `drm_file_update_pid` waits out an RCU grace period (~15 ms) on the next ioctl
+  from the other side. A `GET_LEASE` per tick stalled sway's main thread once a
+  second, every window and the cursor with it. What a lease holds is kept from its
+  plan (`Spawned::objects`) instead.
 - **A seat with no input devices aborts the compositor.** wlroots treats zero
   devices as fatal unless `WLR_LIBINPUT_NO_DEVICES=1`. A display with no keyboard
   is still worth having, and the keyboard arrives later by hotplug.

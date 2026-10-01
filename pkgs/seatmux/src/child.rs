@@ -23,11 +23,16 @@ pub struct Spawned {
     pub process: Child,
     /// Held for the child's lifetime. Dropping it revokes the lease, which is
     /// what makes a restart self-cleaning.
+    #[allow(dead_code)]
     pub lease: OwnedFd,
+    /// What the lease holds, kept here so nothing has to ask the kernel: a
+    /// `GET_LEASE` from seatmux on the child's fd makes the child's next ioctl
+    /// wait out an RCU grace period (`drm_file_update_pid`), a dropped frame.
+    pub objects: Vec<u32>,
 }
 
 /// Launch a seat's compositor with its lease, socket and audio targets.
-pub fn spawn(seat: &Seat, lease: OwnedFd, socket: &Path) -> Result<Spawned> {
+pub fn spawn(seat: &Seat, lease: OwnedFd, objects: Vec<u32>, socket: &Path) -> Result<Spawned> {
     let (program, args) = seat
         .command
         .split_first()
@@ -118,5 +123,9 @@ pub fn spawn(seat: &Seat, lease: OwnedFd, socket: &Path) -> Result<Spawned> {
         .spawn()
         .with_context(|| format!("spawning seat '{}': {program}", seat.name))?;
 
-    Ok(Spawned { process, lease })
+    Ok(Spawned {
+        process,
+        lease,
+        objects,
+    })
 }
