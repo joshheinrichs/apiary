@@ -31,6 +31,10 @@ in
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest;
+  services.scx = {
+    enable = true;
+    scheduler = "scx_cosmos";
+  };
   # for ebpf + alloy
   boot.kernel.sysctl = {
     "kernel.unprivileged_bpf_disabled" = 0;
