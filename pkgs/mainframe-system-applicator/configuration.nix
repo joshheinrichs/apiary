@@ -36,6 +36,9 @@ in
     autoEnrollKeys.enable = true;
   };
   boot.loader.efi.canTouchEfiVariables = true;
+  boot.initrd.luks.devices."luks-15566d15-ed24-47bb-93eb-dfc549e2d133".crypttabExtraOpts = [
+    "tpm2-device=auto"
+  ];
   boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest;
   services.scx = {
     enable = true;
