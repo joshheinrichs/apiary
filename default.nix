@@ -38,6 +38,7 @@ in
     mainframe-home
     mainframe-home-applicator
     mainframe-iso
+    mainframe-motherboard-firmware
     blog
     sealed-syncthing
     gaggimate
