@@ -35,6 +35,7 @@ in
     enable = true;
     scheduler = "scx_cosmos";
   };
+  boot.kernelModules = [ "ntsync" ];
   # for ebpf + alloy
   boot.kernel.sysctl = {
     "kernel.unprivileged_bpf_disabled" = 0;
@@ -291,6 +292,7 @@ in
     SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
     KERNEL=="hidraw*", ATTRS{idVendor}=="${padVendor}", ATTRS{idProduct}=="${padProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
     SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff4", TAG+="uaccess", GROUP="users", MODE="0660"
+    KERNEL=="ntsync", GROUP="users", MODE="0660"
   '';
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.josh = {
