@@ -1,6 +1,7 @@
 {
   pkgs,
   nix-cachyos-kernel,
+  lanzaboote,
   apiary,
   isIso ? false,
 }:
@@ -16,6 +17,7 @@ let
     configuration = {
       imports = [
         ./configuration.nix
+        lanzaboote.nixosModules.lanzaboote
       ]
       ++ pkgs.lib.optional isIso "${pkgs.path}/nixos/modules/installer/cd-dvd/iso-image.nix";
       nix.nixPath = [ "pkgs=${pkgs.path}" ];

@@ -164,6 +164,7 @@ in
     apiary.seal.generator
     apiary.sealed-spotify
     apiary.sealed-discord
+    apiary.btrmaps
     ripgrep
     jq
     bat
@@ -582,6 +583,7 @@ in
   programs.claude-code = {
     enable = true;
     settings.model = "opus";
+    settings.effortLevel = "xhigh";
     settings.voiceEnabled = true;
     settings.voice = {
       enabled = true;

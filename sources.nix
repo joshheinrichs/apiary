@@ -13,6 +13,13 @@
     ref = "release";
     shallow = true;
   };
+  # git ls-remote https://github.com/nix-community/lanzaboote v1.2.0
+  lanzaboote-src = builtins.fetchGit {
+    url = "https://github.com/nix-community/lanzaboote";
+    rev = "c1c5edd31802d181c8aa2c71588995d93425d650";
+    ref = "refs/tags/v1.2.0";
+    shallow = true;
+  };
   # git ls-remote https://github.com/nix-community/home-manager master
   home-manager-src = builtins.fetchGit {
     url = "https://github.com/nix-community/home-manager";

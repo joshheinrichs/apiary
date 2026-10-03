@@ -28,7 +28,13 @@ in
   ];
 
   # Bootloader.
-  boot.loader.systemd-boot.enable = true;
+  boot.lanzaboote = {
+    enable = true;
+    pkiBundle = "/var/lib/sbctl";
+    configurationLimit = 10;
+    autoGenerateKeys.enable = true;
+    autoEnrollKeys.enable = true;
+  };
   boot.loader.efi.canTouchEfiVariables = true;
   boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest;
   services.scx = {
@@ -320,6 +326,7 @@ in
     #  vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
     #  wget
     wgnord
+    sbctl
   ];
 
   # Some programs need SUID wrappers, can be configured further or are

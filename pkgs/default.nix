@@ -2,6 +2,7 @@
   pkgs,
   nix-cachyos-kernel,
   home-manager,
+  lanzaboote,
   apiary,
 }:
 rec {
@@ -18,14 +19,26 @@ rec {
   sway = import ./sway { inherit pkgs wlroots; };
   seatmux = import ./seatmux { inherit pkgs; };
   scoper = import ./scoper { inherit pkgs; };
+  blog = import ./blog { inherit pkgs; };
   dictate = import ./dictate { inherit pkgs; };
   device-dumper = import ./device-dumper { inherit pkgs; };
+  btrmaps = import ./btrmaps { inherit pkgs; };
   mainframe-devices = import ./mainframe-devices;
   mainframe-system-applicator = import ./mainframe-system-applicator {
-    inherit pkgs nix-cachyos-kernel apiary;
+    inherit
+      pkgs
+      nix-cachyos-kernel
+      lanzaboote
+      apiary
+      ;
   };
   mainframe-iso = import ./mainframe-system-applicator {
-    inherit pkgs nix-cachyos-kernel apiary;
+    inherit
+      pkgs
+      nix-cachyos-kernel
+      lanzaboote
+      apiary
+      ;
     isIso = true;
   };
   gaggimate = import ./gaggimate { inherit pkgs; };
