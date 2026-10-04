@@ -197,6 +197,8 @@ in
       "-query-frontend.instance-addr=127.0.0.1"
       "-segment-writer.lifecycler.addr=127.0.0.1"
       "-segment-writer.lifecycler.interface=lo"
+      "-segment-writer.min-ready-duration=0s"
+      "-metastore.min-ready-duration=0s"
     ];
 
     settings = {
