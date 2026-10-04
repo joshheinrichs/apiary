@@ -83,7 +83,7 @@ let
   # systemd-run child of this seat would inherit neither WAYLAND_DISPLAY nor the
   # audio environment seatmux sets, and would land on the desk's speakers.
   tvSwayConfig = pkgs.writeText "sway-tv.conf" ''
-    output "${tvOutput}" mode 3840x2160@60Hz position 0 0 scale 2
+    output "${tvOutput}" mode 3840x2160@60Hz position 0 0 scale 2 hdr on
 
     set $mod Mod4
     bindsym $mod+Return exec ${launch} ${pkgs.foot}/bin/foot
@@ -113,6 +113,7 @@ let
     command = [ "${apiary.sway}/bin/sway", "-d" ]
 
     [seat.env]
+    WLR_RENDERER = "vulkan"
     TZ = "America/Regina"
     GTK_THEME = "Adwaita:dark"
     EDITOR = "${pkgs.neovim}/bin/nvim"
@@ -125,6 +126,7 @@ let
     command = [ "${apiary.sway}/bin/sway", "-d", "-c", "${tvSwayConfig}" ]
 
     [seat.env]
+    WLR_RENDERER = "vulkan"
     TZ = "America/Regina"
     GTK_THEME = "Adwaita:dark"
     EDITOR = "${pkgs.neovim}/bin/nvim"
