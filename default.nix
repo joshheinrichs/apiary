@@ -16,6 +16,7 @@ let
         "steam-original"
         "steam-run"
         "steam-unwrapped"
+        "jieli-toolchain"
       ];
   };
   nix-cachyos-kernel = import "${sources.nix-cachyos-kernel-src}/default.nix";
@@ -39,6 +40,7 @@ in
     mainframe-home-applicator
     mainframe-iso
     mainframe-motherboard-firmware
+    felucca
     blog
     sealed-syncthing
     gaggimate
