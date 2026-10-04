@@ -55,8 +55,27 @@ in
 
   fileSystems."/".options = [ "compress=zstd" ];
 
+  # memoryPercent caps *uncompressed* swap. Fedora went to 100% (max 8G) on observed
+  # 2-3x ratios [1]; a Firefox LTO link compressed 3.4-4.3x here, so 200% costs about
+  # half of RAM when full.
+  #
+  # swappiness is the anon:file reclaim cost split (0-200) [2]; 180 claims a zram
+  # swap-in is ~9x cheaper than refaulting a file page. 180 traces back to one Reddit
+  # benchmark [3]: Pop!_OS adopted it from there [4] and others (ArchWiki etc.) copied
+  # Pop. Fedora leaves swappiness at the kernel default.
+  #
+  # The same sources also set vm.page-cluster = 0. Not needed: zram is
+  # SWP_SYNCHRONOUS_IO, and fault swap-in on those devices skips readahead
+  # entirely [5].
+  #
+  # [1] https://fedoraproject.org/wiki/Changes/Scale_ZRAM_to_full_memory_size
+  # [2] https://docs.kernel.org/admin-guide/sysctl/vm.html#swappiness
+  # [3] https://www.reddit.com/r/Fedora/comments/mzun99/new_zram_tuning_benchmarks/
+  # [4] https://github.com/pop-os/default-settings/pull/163
+  # [5] mm/memory.c do_swap_page(): "Swapin bypasses readahead for SWP_SYNCHRONOUS_IO devices"
   zramSwap.enable = true;
-  zramSwap.memoryPercent = 150;
+  zramSwap.memoryPercent = 200;
+  boot.kernel.sysctl."vm.swappiness" = 180;
   boot.kernelParams = [ "zswap.enabled=0" ];
 
   nix.package = pkgs.nixVersions.latest;
