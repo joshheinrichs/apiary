@@ -40,6 +40,7 @@ in
     mainframe-home-applicator
     mainframe-iso
     mainframe-motherboard-firmware
+    firefox
     felucca
     blog
     sealed-syncthing

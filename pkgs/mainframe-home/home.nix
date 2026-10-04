@@ -646,6 +646,7 @@ in
   };
   programs.firefox = {
     enable = true;
+    package = apiary.firefox;
     # The nixpkgs Firefox wrapper sets MOZ_LEGACY_PROFILES=1, so Firefox reads
     # ~/.mozilla/firefox. home-manager's default for stateVersion >= 26.05 is the
     # XDG path (~/.config/mozilla/firefox), which Firefox never opens here, so pin

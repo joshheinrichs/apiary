@@ -1,0 +1,161 @@
+From 75a001a077507a5cd95d6e072497ad82776a1133 Mon Sep 17 00:00:00 2001
+From: Josh Heinrichs <joshiheinrichs@gmail.com>
+Date: Sat, 3 Oct 2026 21:18:09 -0600
+Subject: [PATCH] Bug XXXXXXX - Retire unlinked VideoFrameSurfaces and drop
+ them once idle. r?stransky
+
+Unlinking a surface from its FFmpeg surface (FlushFFmpegFrames(), or a
+re-output frame matching a surface still in use since bug 2045756) left
+it in the pool forever: only the copy path could pick it up again, so in
+zero-copy playback the pool and its global refcount eventfds grew for as
+long as the decoder lived, and every pool walk got slower with it.
+
+The pool used mFFMPEGSurfaceID == -1 to mean any surface not bound to an
+FFmpeg surface; track that as an explicit state instead, and add a
+Retired state for unlinked surfaces. They are never handed out again,
+which is what FlushFFmpegFrames() always intended, and
+ReleaseUnusedVAAPIFrames() drops them once neither FFmpeg nor the
+renderer holds them. The pool is now bounded by the FFmpeg surface pool
+plus frames still on screen.
+---
+ .../platforms/ffmpeg/FFmpegVideoFramePool.cpp | 33 ++++++++++++++++---
+ .../platforms/ffmpeg/FFmpegVideoFramePool.h   | 16 +++++++++
+ 2 files changed, 44 insertions(+), 5 deletions(-)
+
+diff --git a/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.cpp b/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.cpp
+index 06d3583..895647d 100644
+--- a/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.cpp
++++ b/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.cpp
+@@ -36,6 +36,8 @@ constexpr static VASurfaceID sInvalidFFMPEGSurfaceID = -1;
+ 
+ namespace mozilla {
+ 
++using SurfaceState = VideoFrameSurface<LIBAV_VER>::State;
++
+ RefPtr<layers::Image> VideoFrameSurface<LIBAV_VER>::GetAsImage() {
+   return new layers::DMABUFSurfaceImage(mSurface);
+ }
+@@ -46,6 +48,8 @@ VideoFrameSurface<LIBAV_VER>::VideoFrameSurface(DMABufSurface* aSurface,
+       mLib(nullptr),
+       mAVHWFrameContext(nullptr),
+       mHWAVBuffer(nullptr),
++      mState(aFFMPEGSurfaceID != sInvalidFFMPEGSurfaceID ? State::Linked
++                                                         : State::Standalone),
+       mFFMPEGSurfaceID(aFFMPEGSurfaceID),
+       mHoldByFFmpeg(false),
+       mUsedByRenderer(false),
+@@ -71,7 +75,7 @@ VideoFrameSurface<LIBAV_VER>::~VideoFrameSurface() {
+ }
+ 
+ void VideoFrameSurface<LIBAV_VER>::DisableRecycle() {
+-  MOZ_DIAGNOSTIC_ASSERT(mFFMPEGSurfaceID == sInvalidFFMPEGSurfaceID,
++  MOZ_DIAGNOSTIC_ASSERT(mState != State::Linked,
+                         "VideoFrameSurface::DisableRecycle(): can't disable "
+                         "recycle for FFmpeg surfaces!");
+   mSurface->DisableRecycle();
+@@ -203,6 +207,15 @@ void VideoFramePool<LIBAV_VER>::ReleaseUnusedVAAPIFrames() {
+       surface->ReleaseVAAPIData();
+     }
+   }
++  mDMABufSurfaces.RemoveElementsBy([](const auto& surface) {
++    if (surface->mState != SurfaceState::Retired || surface->mHoldByFFmpeg ||
++        surface->IsUsedByRenderer()) {
++      return false;
++    }
++    DMABUF_LOG("Dropping retired DMABufSurface UID {}",
++               surface->mSurface->GetUID());
++    return true;
++  });
+ }
+ 
+ // Unlink all FFmpeg frames from ID. That ensures we'll allocate new
+@@ -212,7 +225,9 @@ void VideoFramePool<LIBAV_VER>::ReleaseUnusedVAAPIFrames() {
+ void VideoFramePool<LIBAV_VER>::FlushFFmpegFrames() {
+   MutexAutoLock lock(mSurfaceLock);
+   for (const auto& surface : mDMABufSurfaces) {
+-    surface->mFFMPEGSurfaceID = sInvalidFFMPEGSurfaceID;
++    if (surface->mState == SurfaceState::Linked) {
++      surface->mState = SurfaceState::Retired;
++    }
+   }
+ }
+ 
+@@ -226,7 +241,8 @@ VideoFramePool<LIBAV_VER>::GetFFmpegVideoFrameSurfaceLocked(
+   // Try to find existing surface by ffmpeg ID. We want to re-use it
+   // to keep matched surface UID / FFmpeg ID.
+   for (auto& surface : mDMABufSurfaces) {
+-    if (surface->mFFMPEGSurfaceID == aFFMPEGSurfaceID) {
++    if (surface->mState == SurfaceState::Linked &&
++        surface->mFFMPEGSurfaceID == aFFMPEGSurfaceID) {
+       if (surface->IsUsedByRenderer()) {
+         // A re-output frame (e.g. VP9/AV1 show_existing_frame) re-displays an
+         // already-decoded frame from the reference buffer, so it can carry the
+@@ -234,7 +250,7 @@ VideoFramePool<LIBAV_VER>::GetFFmpegVideoFrameSurfaceLocked(
+         // matched surface is still in use, detach it from this FFmpeg id and
+         // let the caller allocate a fresh surface instead (as
+         // GetFreeVideoFrameSurfaceLocked does).
+-        surface->mFFMPEGSurfaceID = sInvalidFFMPEGSurfaceID;
++        surface->mState = SurfaceState::Retired;
+         return nullptr;
+       }
+       return surface;
+@@ -247,7 +263,7 @@ RefPtr<VideoFrameSurface<LIBAV_VER>>
+ VideoFramePool<LIBAV_VER>::GetFreeVideoFrameSurfaceLocked(
+     const MutexAutoLock& aProofOfLock) {
+   for (auto& surface : mDMABufSurfaces) {
+-    if (surface->mFFMPEGSurfaceID != sInvalidFFMPEGSurfaceID) {
++    if (surface->mState != SurfaceState::Standalone) {
+       continue;
+     }
+     if (surface->mHoldByFFmpeg) {
+@@ -323,6 +339,13 @@ VideoFramePool<LIBAV_VER>::GetTargetVideoFrameSurfaceLocked(
+ 
+   // Okay, create a new one
+   if (!videoSurface) {
++#ifdef DEBUG
++    // At most one surface may be linked to a given FFmpeg surface.
++    for (const auto& pooled : mDMABufSurfaces) {
++      MOZ_ASSERT(!aRecycleSurface || pooled->mState != SurfaceState::Linked ||
++                 pooled->mFFMPEGSurfaceID != aFFmpegSurfaceID);
++    }
++#endif
+     surface = new DMABufSurfaceYUV();
+     videoSurface = new VideoFrameSurface<LIBAV_VER>(
+         surface, aRecycleSurface ? aFFmpegSurfaceID : sInvalidFFMPEGSurfaceID);
+diff --git a/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.h b/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.h
+index 7fa0d2a..317a394 100644
+--- a/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.h
++++ b/dom/media/platforms/ffmpeg/FFmpegVideoFramePool.h
+@@ -103,6 +103,20 @@ class VideoFrameSurface<LIBAV_VER> {
+ 
+   void DisableRecycle();
+ 
++  enum class State : uint8_t {
++    // Bound to FFmpeg surface mFFMPEGSurfaceID and reused for every frame
++    // FFmpeg decodes into it, so the renderer can keep its import.
++    Linked,
++    // Not bound to an FFmpeg surface (copied, SW uploaded or DRM PRIME
++    // frames). Reused for another such frame once idle.
++    Standalone,
++    // Unbound from its FFmpeg surface (decoder flush, or a re-output frame
++    // matched it while still in use) and possibly still displayed. Never
++    // reused; dropped from the pool once neither FFmpeg nor the renderer
++    // holds it.
++    Retired,
++  };
++
+  protected:
+   // Lock VAAPI related data
+   void LockVAAPIData(AVCodecContext* aAVCodecContext, AVFrame* aAVFrame,
+@@ -127,6 +141,8 @@ class VideoFrameSurface<LIBAV_VER> {
+   const FFmpegLibWrapper* mLib;
+   AVBufferRef* mAVHWFrameContext;
+   AVBufferRef* mHWAVBuffer;
++  State mState;
++  // Valid only in State::Linked.
+   VASurfaceID mFFMPEGSurfaceID;
+   bool mHoldByFFmpeg;
+   bool mUsedByRenderer;
+-- 
+2.55.0
+

@@ -15,6 +15,7 @@ rec {
   sealed-spotify = import ./sealed-spotify { inherit pkgs seal; };
   sealed-discord = import ./sealed-discord { inherit pkgs seal; };
   sealed-syncthing = import ./sealed-syncthing { inherit pkgs seal; };
+  firefox = import ./firefox { inherit pkgs; };
   wlroots = import ./wlroots { inherit pkgs; };
   sway = import ./sway { inherit pkgs wlroots; };
   seatmux = import ./seatmux { inherit pkgs; };
