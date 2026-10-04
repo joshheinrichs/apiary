@@ -137,6 +137,7 @@ in
   # https://wiki.nixos.org/w/index.php?title=Prometheus
   services.prometheus = {
     enable = true;
+    globalConfig.scrape_interval = "1m";
     exporters.node = {
       enable = true;
       port = 9000;
@@ -185,11 +186,19 @@ in
     };
     provision = {
       enable = true;
+      dashboards.settings.providers = [
+        {
+          name = "apiary";
+          options.path = import ./dashboards.nix { inherit pkgs; };
+        }
+      ];
       datasources.settings.datasources = [
         {
           name = "Prometheus";
           type = "prometheus";
           url = "http://${config.services.prometheus.listenAddress}:${toString config.services.prometheus.port}";
+          # $__rate_interval derives from this; Grafana's 15s default makes rate() windows too short.
+          jsonData.timeInterval = config.services.prometheus.globalConfig.scrape_interval;
           isDefault = true;
           editable = false;
         }
