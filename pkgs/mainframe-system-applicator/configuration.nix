@@ -165,6 +165,10 @@ in
   };
   services.grafana = {
     enable = true;
+    declarativePlugins = with pkgs.grafanaPlugins; [
+      grafana-pyroscope-app
+      grafana-metricsdrilldown-app
+    ];
     settings = {
       server = {
         http_addr = "127.0.0.1";
