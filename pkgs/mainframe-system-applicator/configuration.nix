@@ -147,6 +147,7 @@ in
         "--collector.tcpstat"
         "--collector.wifi"
         "--collector.drm"
+        "--collector.rapl.enable-zone-label"
       ];
     };
     scrapeConfigs = [
@@ -309,22 +310,27 @@ in
   # xdg.portal.wlr.enable = true;
   services.udisks2.enable = true;
 
-  # GameCube controller adapter (Nintendo WUP-028): Slippi Dolphin opens it
-  # directly via libusb, so it needs a udev rule granting the user access. vid/pid
-  # come from the device-dumper manifest (see mainframe-devices). uaccess (grant to
-  # the active-seat session) proved unreliable here — the ACL didn't apply even
-  # with an active seat0 session — so pin deterministic group access too: GROUP
-  # "users" (josh is a member) + MODE 0660, independent of logind/session state.
-  # Winry315 macropad: the daemon talks to it over its raw HID interface, and
-  # the applicator flashes it while it is enumerated as the Atmel DFU
-  # bootloader -- two different identities, so two rules. The bootloader's is
-  # hand-typed because it only exists mid-flash, so the manifest never sees it.
-  services.udev.extraRules = ''
-    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
-    KERNEL=="hidraw*", ATTRS{idVendor}=="${padVendor}", ATTRS{idProduct}=="${padProduct}", TAG+="uaccess", GROUP="users", MODE="0660"
-    SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff4", TAG+="uaccess", GROUP="users", MODE="0660"
-    KERNEL=="ntsync", GROUP="users", MODE="0660"
-  '';
+  services.udev.packages = [
+    # 70 so uaccess is tagged before 71-seat/73-seat-late apply it.
+    (pkgs.writeTextDir "lib/udev/rules.d/70-local.rules" ''
+      # GameCube controller adapter (Nintendo WUP-028): Slippi Dolphin opens it
+      # directly via libusb.
+      SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="${gcAdapterVendor}", ATTRS{idProduct}=="${gcAdapterProduct}", TAG+="uaccess"
+
+      # Winry315 macropad: the daemon talks to it over its raw HID interface.
+      KERNEL=="hidraw*", ATTRS{idVendor}=="${padVendor}", ATTRS{idProduct}=="${padProduct}", TAG+="uaccess"
+
+      # Winry315 as the Atmel DFU bootloader, while the applicator flashes it.
+      # Hand-typed: it only exists mid-flash, so the manifest never sees it.
+      SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="03eb", ATTRS{idProduct}=="2ff4", TAG+="uaccess"
+
+      # ntsync for Wine/Proton.
+      KERNEL=="ntsync", TAG+="uaccess"
+
+      # RAPL energy counters are root-only (PLATYPUS); only node_exporter gets them.
+      SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="${pkgs.coreutils}/bin/chgrp ${config.services.prometheus.exporters.node.group} /sys%p/energy_uj", RUN+="${pkgs.coreutils}/bin/chmod g+r /sys%p/energy_uj"
+    '')
+  ];
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.josh = {
     isNormalUser = true;
