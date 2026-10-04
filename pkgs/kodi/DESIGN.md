@@ -1,6 +1,8 @@
 # kodi — design
 
-Kodi 21.3 (wayland) with the Arctic Fuse 3 skin, for the TV seat.
+Kodi 22 (wayland, currently 22.0rc1) with the Arctic Fuse 3 skin, for the TV seat.
+Kodi 22 is the first release with HDR on Wayland, through color-management-v1;
+nixpkgs still ships 21, so the package overrides `kodi-wayland`.
 
 ## What is built and what is state
 
@@ -61,3 +63,18 @@ type and scraper live in the video database (`MyVideos*.db`), not in any file
 the build can write, so "This directory contains: Movies" is a one-time step in
 the UI. After that it is profile state like watched flags, and the declared
 source keeps pointing at the same path across rebuilds.
+
+## Building Kodi 22 on nixpkgs' 21 expression
+
+- It builds against nixpkgs' current `ffmpeg`. nixpkgs pins Kodi 21 to
+  `ffmpeg_6`, which 22 rejects. FFmpeg 8 dropped libpostproc, so
+  `DISABLE_FFMPEG_SOURCE_PLUGINS=ON`. That only loses deblocking for
+  software-decoded legacy codecs.
+- The SWIG Python bindings refuse anything older than 4.5.
+- crossguid and libdvd{css,read,nav} are built in-tree from the archives pinned
+  in `tools/depends/target`. Kodi takes a local copy through `-D<NAME>_URL`
+  with the name in **upper case**. The lower-case `libdvdcss_URL` flags that
+  nixpkgs passes are silently ignored, so Kodi tries to download and the
+  sandbox stops it.
+- 22 configures for Ninja, so the inherited `make kodi-test` check fails
+  after a complete build.

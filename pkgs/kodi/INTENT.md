@@ -6,5 +6,7 @@
   Arctic skins are abandoned; AF3 is the one still being developed.
 - **Fully offline is not a goal.** Posters and fanart come from TMDB on scan and
   are cached after. Playback never needs the network.
+- **No compromise on picture quality.** 4K HDR on the TV, which means Kodi 22 for
+  HDR on Wayland.
 - **Movies live in `~/Videos/Movies`** — drop files in, launch, they show up.
 - Runs on the TV seat under seatmux.

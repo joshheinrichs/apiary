@@ -12,10 +12,104 @@ pkgs.lib.makeOverridable (
   let
     inherit (pkgs) lib;
 
-    # Must be kodi-wayland's own addon set: requiredKodiAddons filters on
-    # `kodiAddonFor == kodi`, so addons built against pkgs.kodiPackages (the X11
-    # build) are dropped from the closure without a word.
-    kodi = pkgs.kodi-wayland;
+    # Kodi 22 for HDR on Wayland (color-management-v1); nixpkgs still ships 21.
+    # The swig override can go once nixpkgs carries 4.5; the in-tree deps stay
+    # because nixpkgs' libcrossguid has no pkg-config file and its libdvdnav is
+    # older than Kodi accepts.
+
+    # The Python bindings refuse SWIG older than 4.5.
+    swig = pkgs.buildPackages.swig.overrideAttrs (
+      finalAttrs: _: {
+        version = "4.5.1";
+        src = pkgs.fetchFromGitHub {
+          owner = "swig";
+          repo = "swig";
+          rev = "v${finalAttrs.version}";
+          hash = "sha256-4E27t+ut0XGqiu0pEi8mo/rfDdT2Rb2jaiSu1xufZfU=";
+        };
+      }
+    );
+
+    # Built in-tree by Kodi's own cmake from the archives pinned in
+    # tools/depends/target/*/*-VERSION. <NAME>_URL (upper case) points it at a
+    # local copy; without one it downloads, which the sandbox refuses.
+    inTreeDeps = {
+      LIBDVDCSS = {
+        archive = "libdvdcss-1.5.0.tar.bz2";
+        sha512 = "439fbd9dae60b9a114d3429a19703478c734e8525ac6852da6f05f72d9ca44ca0ac5e874ab6a10017e7f31869fcd29f01d1bc156c4f0331b4e4abd98ec2f95cd";
+      };
+      LIBDVDNAV = {
+        archive = "libdvdnav-7.0.0.tar.bz2";
+        sha512 = "8d12d476e352def9716ecbd7ba184a70dd9bae87dcde669b8647a0ef9ac1991f617c9918c043e159eb353302c4cc50fb71bc591ceaeba1d3b9d47af77fa72c71";
+      };
+      LIBDVDREAD = {
+        archive = "libdvdread-7.0.1.tar.bz2";
+        sha512 = "b5390a1acb8fdf6e24188f9259199eb0fef2dd4b332447ba2bfa571f9fc0c3bfad00c1d27a8b8806180a853c04a818b7802d3075ff787142c1a175ad798c6a3d";
+      };
+      CROSSGUID = {
+        archive = "crossguid-ca1bf4b810e2d188d04cb6286f957008ee1b7681.tar.gz";
+        sha512 = "f0a80d8e99b10473bcfdfde3d1c5fd7b766959819f0d1c0595ac84ce46db9007a5fbfde9a55aca60530c46cb7f8ef4c7e472c6191559ded92f868589c141ccaf";
+      };
+    };
+
+    kodi = (pkgs.kodi-wayland.override { inherit (pkgs) ffmpeg; }).overrideAttrs (
+      finalAttrs: old: {
+        version = "22.0rc1";
+        kodiReleaseName = "Piers";
+        src = pkgs.fetchFromGitHub {
+          owner = "xbmc";
+          repo = "xbmc";
+          rev = "${finalAttrs.version}-${finalAttrs.kodiReleaseName}";
+          hash = "sha256-zIQdK3Rj+TLSopJ1R10kEDlHkrgHa36HFN4VszSUJLM=";
+        };
+        patches = [ ];
+        # nixpkgs pins these as source trees for 21; 22 takes inTreeDeps instead.
+        libdvdcss = "";
+        libdvdnav = "";
+        libdvdread = "";
+
+        cmakeFlags =
+          lib.filter (
+            f:
+            f != "-DENABLE_INTERNAL_CROSSGUID=OFF"
+            && !lib.hasPrefix "-DSWIG_EXECUTABLE=" f
+            && !lib.hasPrefix "-Dlibdvd" f
+          ) old.cmakeFlags
+          ++ [
+            "-DSWIG_EXECUTABLE=${swig}/bin/swig"
+            "-DENABLE_INTERNAL_CROSSGUID=ON"
+            # FFmpeg 8 dropped libpostproc; Kodi only uses it to deblock
+            # software-decoded legacy codecs.
+            "-DDISABLE_FFMPEG_SOURCE_PLUGINS=ON"
+          ]
+          ++ lib.mapAttrsToList (
+            name: dep:
+            "-D${name}_URL=${
+              pkgs.fetchurl {
+                url = "https://mirrors.kodi.tv/build-deps/sources/${dep.archive}";
+                inherit (dep) sha512;
+              }
+            }"
+          ) inTreeDeps;
+
+        # Kodi 22 configures for Ninja; nixpkgs' checkPhase drives make.
+        checkPhase = lib.replaceStrings [ "make -j $NIX_BUILD_CORES" ] [ "ninja -j $NIX_BUILD_CORES" ] old.checkPhase;
+
+        nativeBuildInputs = old.nativeBuildInputs ++ [
+          pkgs.meson
+          pkgs.ninja
+        ];
+        buildInputs = old.buildInputs ++ [
+          pkgs.exiv2
+          pkgs.fmt
+          pkgs.pcre2
+          pkgs.nlohmann_json
+        ];
+      }
+    );
+    # Must be kodi's own addon set: requiredKodiAddons filters on
+    # `kodiAddonFor == kodi`, so addons built against any other Kodi (pkgs.kodiPackages,
+    # the X11 build) are dropped from the closure without a word.
     kp = kodi.packages;
 
     mirror =
