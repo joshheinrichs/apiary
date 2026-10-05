@@ -44,7 +44,12 @@ in
     enable = true;
     scheduler = "scx_cosmos";
   };
-  boot.kernelModules = [ "ntsync" ];
+  # gcadapter_oc polls the GameCube adapter every 1ms instead of 8ms.
+  boot.extraModulePackages = [ config.boot.kernelPackages.gcadapter-oc-kmod ];
+  boot.kernelModules = [
+    "ntsync"
+    "gcadapter_oc"
+  ];
   # for ebpf + alloy
   boot.kernel.sysctl = {
     "kernel.unprivileged_bpf_disabled" = 0;
