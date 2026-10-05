@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::io::{self, Write};
-use std::os::unix::io::FromRawFd;
+use std::os::fd::OwnedFd;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
@@ -46,6 +47,214 @@ const PIPEWIRE_SANDBOX_CAPTURE_CONF: &str = match option_env!("PIPEWIRE_SANDBOX_
     None => "pipewire-sandbox-capture.conf",
 };
 
+/// Inside a pasta sandbox: pasta forwards DNS sent here to the host's resolver.
+const SANDBOX_DNS: &str = "169.254.1.1";
+/// Inside a pasta sandbox: the host's loopback, mapped only when the host is reachable.
+const SANDBOX_HOST: &str = "169.254.1.2";
+
+// ---------------------------------------------------------------------------
+// Network policy
+// ---------------------------------------------------------------------------
+
+/// Destinations a sandbox may reach.
+///
+/// `All` and `Zones` both run in a private netns bridged by pasta; `All`
+/// skips the firewall. `Shared` joins the host netns outright.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Net {
+    #[default]
+    None,
+    Shared,
+    All,
+    Zones(Zones),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Zones {
+    pub internet: bool,
+    pub lan: bool,
+    pub host: bool,
+}
+
+impl Net {
+    pub fn uses_pasta(&self) -> bool {
+        matches!(self, Net::All | Net::Zones(_))
+    }
+    pub fn reaches_host(&self) -> bool {
+        match self {
+            Net::All => true,
+            Net::Zones(z) => z.host,
+            Net::None | Net::Shared => false,
+        }
+    }
+}
+
+impl std::str::FromStr for Net {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "none" => return Ok(Net::None),
+            "shared" => return Ok(Net::Shared),
+            "all" => return Ok(Net::All),
+            _ => {}
+        }
+        let words: Vec<&str> = s.split(',').collect();
+        if let Some(bad) = words
+            .iter()
+            .find(|w| !matches!(**w, "internet" | "lan" | "host"))
+        {
+            return Err(match *bad {
+                "none" | "shared" | "all" => format!("`{bad}` cannot be combined with other zones"),
+                _ => format!(
+                    "unknown zone `{bad}` (expected internet, lan, host, all, shared or none)"
+                ),
+            });
+        }
+        Ok(Net::Zones(Zones {
+            internet: words.contains(&"internet"),
+            lan: words.contains(&"lan"),
+            host: words.contains(&"host"),
+        }))
+    }
+}
+
+impl std::fmt::Display for Net {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Net::None => f.write_str("none"),
+            Net::Shared => f.write_str("shared"),
+            Net::All => f.write_str("all"),
+            Net::Zones(z) => {
+                let words: Vec<&str> = [(z.internet, "internet"), (z.lan, "lan"), (z.host, "host")]
+                    .into_iter()
+                    .filter_map(|(on, w)| on.then_some(w))
+                    .collect();
+                f.write_str(&words.join(","))
+            }
+        }
+    }
+}
+
+/// An inbound port forward, in pasta's -t/-u SPEC syntax.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Publish {
+    Tcp(String),
+    Udp(String),
+}
+
+impl std::str::FromStr for Publish {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s.split_once(':') {
+            Some(("tcp", spec)) => Ok(Publish::Tcp(spec.into())),
+            Some(("udp", spec)) => Ok(Publish::Udp(spec.into())),
+            _ => Err(format!("expected tcp:SPEC or udp:SPEC, got `{s}`")),
+        }
+    }
+}
+
+impl std::fmt::Display for Publish {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Publish::Tcp(spec) => write!(f, "tcp:{spec}"),
+            Publish::Udp(spec) => write!(f, "udp:{spec}"),
+        }
+    }
+}
+
+/// pasta arguments for a policy, minus the namespace paths only known at runtime.
+fn pasta_args(net: Net, publish: &[Publish], mac: Option<&str>) -> Vec<String> {
+    let host = if net.reaches_host() {
+        vec!["--map-host-loopback".into(), SANDBOX_HOST.into()]
+    } else {
+        vec!["--no-map-gw".into()]
+    };
+    let mac = mac
+        .map(|m| vec!["--ns-mac-addr".into(), m.into()])
+        .unwrap_or_default();
+    let forwards = |flag: &str, specs: Vec<&String>| -> Vec<String> {
+        if specs.is_empty() {
+            return vec![flag.into(), "none".into()];
+        }
+        specs
+            .into_iter()
+            .flat_map(|s| [flag.into(), s.clone()])
+            .collect()
+    };
+    let tcp = forwards(
+        "-t",
+        publish
+            .iter()
+            .filter_map(|p| match p {
+                Publish::Tcp(s) => Some(s),
+                Publish::Udp(_) => None,
+            })
+            .collect(),
+    );
+    let udp = forwards(
+        "-u",
+        publish
+            .iter()
+            .filter_map(|p| match p {
+                Publish::Udp(s) => Some(s),
+                Publish::Tcp(_) => None,
+            })
+            .collect(),
+    );
+
+    [
+        vec![
+            "--quiet".into(),
+            "--config-net".into(),
+            // Host-loopback forwards land on the sandbox's loopback, so apps
+            // bound to 127.0.0.1 inside stay reachable through --publish.
+            "--host-lo-to-ns-lo".into(),
+            // No sandbox -> host port forwards: pasta's default (auto) mirrors
+            // every host listener into the sandbox and steals those ports.
+            "-T".into(),
+            "none".into(),
+            "-U".into(),
+            "none".into(),
+            "--dns-forward".into(),
+            SANDBOX_DNS.into(),
+        ],
+        host,
+        mac,
+        tcp,
+        udp,
+    ]
+    .concat()
+}
+
+/// nftables ruleset enforcing a zone set inside the sandbox netns. Matches
+/// run top to bottom; whatever is left over is internet.
+fn firewall_ruleset(zones: Zones) -> String {
+    let verdict = |allowed: bool| if allowed { "accept" } else { "drop" };
+    format!(
+        "table inet seal {{
+  chain output {{
+    type filter hook output priority 0; policy {internet};
+    oif lo accept
+    ct state established,related accept
+    ip daddr {dns_addr} meta l4proto {{ tcp, udp }} th dport 53 {dns}
+    ip daddr {host_addr} {host}
+    ip daddr {{ 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 255.255.255.255 }} {lan}
+    ip6 daddr {{ ::1, fc00::/7, fe80::/10, ff00::/8 }} {lan}
+  }}
+}}
+",
+        internet = verdict(zones.internet),
+        dns_addr = SANDBOX_DNS,
+        // DNS is a tunnel to the internet, so a host-only sandbox gets none.
+        dns = verdict(zones.internet || zones.lan),
+        host_addr = SANDBOX_HOST,
+        host = verdict(zones.host),
+        lan = verdict(zones.lan),
+    )
+}
+
 // ---------------------------------------------------------------------------
 // CLI flags shared by both binaries
 // ---------------------------------------------------------------------------
@@ -64,20 +273,15 @@ pub struct SandboxArgs {
     #[arg(long)]
     pub audio_capture: bool,
 
-    #[arg(long)]
-    pub network: bool,
+    /// What the sandbox can reach: none, shared, all, or a comma-separated
+    /// set of internet, lan, host
+    #[arg(long, value_name = "ZONES", default_value = "none")]
+    pub net: Net,
 
-    /// Isolated network namespace bridged to the host via pasta (rootless)
-    #[arg(long, conflicts_with = "network")]
-    pub pasta: bool,
-
-    /// TCP port-forwarding spec passed to `pasta -t` (repeatable)
-    #[arg(long = "pasta-tcp", value_name = "SPEC")]
-    pub pasta_tcp: Vec<String>,
-
-    /// UDP port-forwarding spec passed to `pasta -u` (repeatable)
-    #[arg(long = "pasta-udp", value_name = "SPEC")]
-    pub pasta_udp: Vec<String>,
+    /// Forward a host port into the sandbox: tcp:SPEC or udp:SPEC, where SPEC
+    /// is pasta's -t/-u syntax (repeatable)
+    #[arg(long, value_name = "PROTO:SPEC")]
+    pub publish: Vec<Publish>,
 
     /// MAC address for the pasta TAP interface (e.g. for stable device fingerprinting)
     #[arg(long = "pasta-mac", value_name = "ADDR")]
@@ -137,6 +341,10 @@ pub struct SandboxArgs {
     #[arg(long, value_name = "PATH")]
     pub tmpfs: Vec<String>,
 
+    /// Pass a device node through at the same path, if it exists (repeatable)
+    #[arg(long, value_name = "PATH")]
+    pub device: Vec<String>,
+
     #[arg(long, default_value = "bubble")]
     pub hostname: String,
 
@@ -146,6 +354,11 @@ pub struct SandboxArgs {
     /// Wrap in cage (nested Wayland compositor) for clipboard/screencopy isolation
     #[arg(long)]
     pub cage: bool,
+
+    /// Share the desktop's X server. X11 has no isolation between clients:
+    /// the app can read every other X client's input, windows and clipboard.
+    #[arg(long)]
+    pub x11: bool,
 
     /// Inherit the host environment instead of starting with a clean slate
     #[arg(long = "keep-env")]
@@ -163,20 +376,19 @@ impl Default for SandboxArgs {
             gui: false,
             audio: false,
             audio_capture: false,
-            network: false,
+            net: Net::None,
+            publish: Vec::new(),
             gpu: false,
             gpu_render: false,
             wayland: false,
             pulse: false,
             pipewire: false,
             camera: false,
-            pasta: false,
-            pasta_tcp: Vec::new(),
-            pasta_udp: Vec::new(),
             pasta_mac: None,
             new_session: false,
             keep_env: false,
             cage: false,
+            x11: false,
             dbus_talk: Vec::new(),
             dbus_own: Vec::new(),
             persist_home: None,
@@ -186,6 +398,7 @@ impl Default for SandboxArgs {
             ro_bind: Vec::new(),
             rw_bind: Vec::new(),
             tmpfs: Vec::new(),
+            device: Vec::new(),
             bwrap: None,
         }
     }
@@ -205,7 +418,7 @@ impl SandboxArgs {
         !self.dbus_talk.is_empty() || !self.dbus_own.is_empty()
     }
     pub fn need_network_files(&self) -> bool {
-        self.network || self.pasta
+        self.net != Net::None
     }
 
     /// Serialize back to CLI args for embedding in wrapper scripts.
@@ -237,8 +450,9 @@ impl SandboxArgs {
         flag!(self.gui, "--gui");
         flag!(self.audio, "--audio");
         flag!(self.audio_capture, "--audio-capture");
-        flag!(self.network, "--network");
-        flag!(self.pasta, "--pasta");
+        if self.net != Net::None {
+            out.push(format!("--net={}", self.net));
+        }
         flag!(self.gpu, "--gpu");
         flag!(self.gpu_render, "--gpu-render");
         flag!(self.wayland, "--wayland");
@@ -247,6 +461,7 @@ impl SandboxArgs {
         flag!(self.camera, "--camera");
         flag!(self.new_session, "--new-session");
         flag!(self.cage, "--cage");
+        flag!(self.x11, "--x11");
         flag!(self.keep_env, "--keep-env");
 
         out.push(format!("--hostname={}", self.hostname));
@@ -255,14 +470,14 @@ impl SandboxArgs {
         opt!(self.share_tmp, "--share-tmp");
         multi!(self.dbus_talk, "--dbus-talk");
         multi!(self.dbus_own, "--dbus-own");
-        multi!(self.pasta_tcp, "--pasta-tcp");
-        multi!(self.pasta_udp, "--pasta-udp");
+        multi!(self.publish, "--publish");
         opt!(self.pasta_mac, "--pasta-mac");
         multi!(self.set_env, "--set-env");
         multi!(self.fwd_env, "--fwd-env");
         multi!(self.ro_bind, "--ro-bind");
         multi!(self.rw_bind, "--rw-bind");
         multi!(self.tmpfs, "--tmpfs");
+        multi!(self.device, "--device");
 
         opt!(self.bwrap, "--bwrap");
 
@@ -375,6 +590,16 @@ impl BwrapArgs {
 
 /// Build bwrap args and exec into the sandboxed process. Never returns on success.
 pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io::Error {
+    if !args.publish.is_empty() && !args.net.uses_pasta() {
+        return io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "--publish needs a pasta network (--net=all or zones), not --net={}",
+                args.net
+            ),
+        );
+    }
+
     let home = env::var("HOME").unwrap_or_else(|_| "/home/user".into());
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };
@@ -398,53 +623,35 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         .map(|p: &PathBuf| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| format!("/run/user/{}", uid));
 
-    // bwrap's default uid map makes the sandbox process appear as uid 0.
-    // Map uid 0 in passwd/group to the real username so getpwuid(0) returns
-    // the correct name and home directory.
-    let passwd_fd = write_pipe(format!("{}:x:0:0::{}:/bin/sh\n", username, home));
-    let group_fd = write_pipe(format!("{}:x:0:{}\n", groupname, username));
+    // bwrap keeps the real uid/gid inside the sandbox. getpwuid(getuid()) has
+    // to resolve: Xwayland only admits clients of the named local user.
+    let passwd_fd = write_pipe(format!(
+        "{}:x:{}:{}::{}:/bin/sh\n",
+        username, uid, gid, home
+    ));
+    let group_fd = write_pipe(format!("{}:x:{}:{}\n", groupname, gid, username));
 
-    let dbus = if args.need_dbus() {
-        match spawn_dbus_proxy(args, &xdg_runtime) {
-            Ok(d) => Some(d),
-            Err(e) => {
-                eprintln!("seal: dbus proxy failed: {}", e);
-                None
-            }
+    // Everything this sandbox's services create lives in one private dir,
+    // removed whole on teardown; no service's own cleanup is relied on.
+    let seal_pid = std::process::id();
+    let run_dir = format!("{}/seal-{}", xdg_runtime, seal_pid);
+    let _ = fs::remove_dir_all(&run_dir);
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        if let Err(e) = fs::DirBuilder::new().mode(0o700).create(&run_dir) {
+            return io::Error::new(e.kind(), format!("{}: {}", run_dir, e));
         }
-    } else {
-        None
-    };
-
-    let pasta = if args.pasta {
-        match spawn_pasta_orchestrator(args) {
-            Ok(p) => Some(p),
-            Err(e) => {
-                return io::Error::new(e.kind(), format!("pasta orchestrator failed: {}", e));
-            }
+    }
+    let dbus_socket = args.need_dbus().then(|| format!("{}/dbus", run_dir));
+    let pipewire_socket =
+        (args.need_pipewire() && !args.pipewire).then(|| format!("{}/pipewire-0", run_dir));
+    let cage_dir = args.cage.then(|| format!("{}/cage", run_dir));
+    if let Some(dir) = &cage_dir {
+        if let Err(e) = fs::create_dir(dir) {
+            let _ = fs::remove_dir_all(&run_dir);
+            return io::Error::new(e.kind(), format!("{}: {}", dir, e));
         }
-    } else {
-        None
-    };
-
-    let pipewire_proxy = if args.need_pipewire() && !args.pipewire {
-        match spawn_pipewire_proxy(&xdg_runtime, args.audio_capture) {
-            Ok(p) => Some(p),
-            Err(e) => return io::Error::new(e.kind(), format!("pipewire proxy: {}", e)),
-        }
-    } else {
-        None
-    };
-
-    let cage_dir = if args.cage {
-        let dir = format!("{}/seal-cage-{}", xdg_runtime, unsafe { libc::getpid() });
-        if let Err(e) = fs::create_dir_all(&dir) {
-            return io::Error::new(e.kind(), format!("cage dir: {}", e));
-        }
-        Some(dir)
-    } else {
-        None
-    };
+    }
 
     let mut cmd = BwrapArgs::new();
 
@@ -461,6 +668,20 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     if cage_dir.is_some() {
         cmd.dir("/tmp/.X11-unix");
         cmd.ro_bind_try("/tmp/.X11-unix/X0", "/tmp/.X11-unix/X0");
+    }
+    // Only the socket file: the abstract socket lives in the host netns,
+    // which a sandbox never shares unless it uses --net=shared.
+    if args.x11 {
+        let display = env::var("DISPLAY").unwrap_or_else(|_| ":0".into());
+        let number = display
+            .trim_start_matches(':')
+            .split('.')
+            .next()
+            .unwrap_or("0")
+            .to_owned();
+        let socket = format!("/tmp/.X11-unix/X{}", number);
+        cmd.dir("/tmp/.X11-unix");
+        cmd.ro_bind_try(&socket, &socket);
     }
     // Home: persistent or ephemeral
     if let Some(ref name) = args.persist_home {
@@ -489,12 +710,20 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     if let Some(fd) = write_pipe(format!("{}\n", args.hostname)) {
         cmd.file(fd, "/etc/hostname");
     }
+    // The container interface's marker: apps that know they're contained stop
+    // waiting on host-only signals, e.g. SDL watches /dev/input instead of
+    // udev events, which never reach the sandbox's netns.
+    cmd.dir("/run/host");
+    if let Some(fd) = write_pipe("seal\n") {
+        cmd.file(fd, "/run/host/container-manager");
+    }
 
     // Isolation
     cmd.die_with_parent();
     cmd.unshare_all();
 
-    if args.network {
+    // Under pasta, "shared" is the netns seal prepared in enter_pasta_net.
+    if args.net == Net::Shared || args.net.uses_pasta() {
         cmd.share_net();
     }
 
@@ -505,7 +734,13 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
             }
         }
 
-        if Path::new("/etc/resolv.conf").exists() {
+        // Under pasta the host's resolvers may sit in a blocked zone, so DNS
+        // goes to pasta's forwarder instead.
+        if args.net.uses_pasta() {
+            if let Some(fd) = write_pipe(format!("nameserver {}\n", SANDBOX_DNS)) {
+                cmd.file(fd, "/etc/resolv.conf");
+            }
+        } else if Path::new("/etc/resolv.conf").exists() {
             cmd.ro_bind("/etc/resolv.conf", "/etc/resolv.conf");
         }
 
@@ -534,13 +769,6 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
                 cmd.setenv(var, &val);
             }
         }
-    }
-
-    if let Some(ref p) = pasta {
-        cmd.push("--info-fd");
-        cmd.push(p.info_fd.to_string());
-        cmd.push("--block-fd");
-        cmd.push(p.block_fd.to_string());
     }
 
     cmd.hostname(&args.hostname);
@@ -591,6 +819,13 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         }
     }
 
+    if args.x11 {
+        cmd.setenv(
+            "DISPLAY",
+            &env::var("DISPLAY").unwrap_or_else(|_| ":0".into()),
+        );
+    }
+
     // Wayland
     if args.need_wayland() {
         let (sock, display) = if let Some(ref dir) = cage_dir {
@@ -626,9 +861,9 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
 
     // PipeWire
     if args.need_pipewire() {
-        if let Some(ref proxy) = pipewire_proxy {
+        if let Some(ref socket) = pipewire_socket {
             let dest = format!("{}/pipewire-0", xdg_runtime);
-            cmd.bind_try(&proxy.socket, &dest);
+            cmd.bind_try(socket, &dest);
         } else {
             if Path::new("/run/pipewire").exists() {
                 cmd.bind_try("/run/pipewire", "/run/pipewire");
@@ -691,14 +926,10 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
 
     // DBus proxy socket
-    if let Some(ref d) = dbus {
+    if let Some(ref socket) = dbus_socket {
         let dest = format!("{}/bus", xdg_runtime);
-        cmd.ro_bind(&d.socket, &dest);
+        cmd.ro_bind(socket, &dest);
         cmd.setenv("DBUS_SESSION_BUS_ADDRESS", &format!("unix:path={}", dest));
-        unsafe {
-            let flags = libc::fcntl(d.lifetime_fd, libc::F_GETFD);
-            libc::fcntl(d.lifetime_fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-        }
     }
 
     // User-supplied binds and env
@@ -715,6 +946,11 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     for path in &args.tmpfs {
         cmd.tmpfs(path.as_str());
     }
+    for path in &args.device {
+        cmd.push("--dev-bind-try");
+        cmd.push(path.as_str());
+        cmd.push(path.as_str());
+    }
     for kv in &args.set_env {
         if let Some((k, v)) = kv.split_once('=') {
             cmd.setenv(k, v);
@@ -730,59 +966,104 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         cmd.new_session();
     }
 
-    let bwrap_bin = args.bwrap.as_deref().unwrap_or(BWRAP);
     let bwrap_args = cmd.exec(exe, exe_args);
 
-    if let Some(ref dir) = cage_dir {
-        let host_display = env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
-        let host_socket = if host_display.starts_with('/') {
-            host_display
-        } else {
-            format!("{}/{}", xdg_runtime, host_display)
-        };
-        use std::os::unix::process::CommandExt;
-        Command::new(CAGE)
-            .env("XDG_RUNTIME_DIR", dir)
-            .env("WAYLAND_DISPLAY", &host_socket)
-            .arg("--")
-            .arg(bwrap_bin)
-            .args(&bwrap_args)
-            .exec()
-    } else {
-        let mut cleanup: Vec<std::process::Child> = Vec::new();
-        if let Some(proxy) = pipewire_proxy {
-            cleanup.push(proxy.pw_child);
-            cleanup.push(proxy.wp_child);
-        }
-        if cleanup.is_empty() {
-            use std::os::unix::process::CommandExt;
-            Command::new(bwrap_bin).args(bwrap_args).exec()
-        } else {
-            let bwrap_pid = unsafe { libc::fork() };
-            if bwrap_pid < 0 {
-                return io::Error::last_os_error();
-            }
-            if bwrap_pid == 0 {
-                use std::os::unix::process::CommandExt;
-                let _ = Command::new(bwrap_bin).args(&bwrap_args).exec();
-                unsafe { libc::_exit(1) };
-            }
-            let mut status = 0i32;
-            unsafe { libc::waitpid(bwrap_pid, &mut status, 0) };
-            for mut child in cleanup {
-                child.kill().ok();
-                child.wait().ok();
-            }
-            let code = if unsafe { libc::WIFEXITED(status) } {
-                unsafe { libc::WEXITSTATUS(status) }
-            } else {
-                1
-            };
-            std::process::exit(code);
-        }
+    let services = start_services(
+        args,
+        &xdg_runtime,
+        &run_dir,
+        dbus_socket.as_deref(),
+        pipewire_socket.as_deref(),
+    );
+    let status = services.and_then(|services| {
+        let status = app_command(
+            args,
+            &xdg_runtime,
+            cage_dir.as_deref(),
+            &bwrap_args,
+            seal_pid,
+        )
+        .status();
+        stop(services);
+        status
+    });
+    let _ = fs::remove_dir_all(&run_dir);
+
+    use std::os::unix::process::ExitStatusExt;
+    match status {
+        Ok(s) => std::process::exit(s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))),
+        Err(e) => e,
     }
 }
 
+/// bwrap, or cage running bwrap. Dies with seal like every service.
+fn app_command(
+    args: &SandboxArgs,
+    xdg_runtime: &str,
+    cage_dir: Option<&str>,
+    bwrap_args: &[OsString],
+    seal_pid: u32,
+) -> Command {
+    use std::os::unix::process::CommandExt;
+    let bwrap_bin = args.bwrap.as_deref().unwrap_or(BWRAP);
+    let mut cmd = match cage_dir {
+        Some(dir) => {
+            let host_display = env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
+            let host_socket = if host_display.starts_with('/') {
+                host_display
+            } else {
+                format!("{}/{}", xdg_runtime, host_display)
+            };
+            let mut c = Command::new(CAGE);
+            c.env("XDG_RUNTIME_DIR", dir)
+                .env("WAYLAND_DISPLAY", host_socket)
+                .arg("--")
+                .arg(bwrap_bin);
+            c
+        }
+        None => Command::new(bwrap_bin),
+    };
+    cmd.args(bwrap_args);
+    unsafe { cmd.pre_exec(move || die_with_seal(libc::SIGKILL, seal_pid)) };
+    cmd
+}
+
+/// Start every service at once, then wait for all of them. On any failure the
+/// ones already started are stopped and the app never runs.
+fn start_services(
+    args: &SandboxArgs,
+    xdg_runtime: &str,
+    run_dir: &str,
+    dbus_socket: Option<&str>,
+    pipewire_socket: Option<&str>,
+) -> io::Result<Vec<Service>> {
+    let mut services = Vec::new();
+    let started = (|| {
+        if let Some(socket) = dbus_socket {
+            services.push(spawn_dbus_proxy(args, socket)?);
+        }
+        if let Some(socket) = pipewire_socket {
+            services.extend(spawn_pipewire_proxy(
+                xdg_runtime,
+                run_dir,
+                socket,
+                args.audio_capture,
+            )?);
+        }
+        // Last: seal itself moves into the sandbox netns here.
+        if args.net.uses_pasta() {
+            services.push(spawn_network(args)?);
+        }
+        await_ready(&services)
+    })();
+    match started {
+        Ok(()) => Ok(services),
+        Err(e) => {
+            stop(services);
+            Err(e)
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // Passwd pipe
 // ---------------------------------------------------------------------------
@@ -799,45 +1080,145 @@ fn write_pipe(content: impl AsRef<[u8]>) -> Option<i32> {
 }
 
 // ---------------------------------------------------------------------------
-// DBus proxy
+// Services
 // ---------------------------------------------------------------------------
+//
+// The helpers an app needs (dbus proxy, pipewire, network) all start at once,
+// and the app starts once every one is ready:
+//
+//   - ready fd: ready when it yields a byte; EOF, or the process exiting
+//     first, is a failure. One poll() waits on all of them.
+//   - no ready fd: ready at spawn, because seal created its listening socket.
+//
+// Every service and the app get PR_SET_PDEATHSIG, so nothing outlives seal.
+// That fires when the parent *thread* exits; seal is single-threaded, so that
+// is exactly when seal exits. On a normal exit seal kills them itself.
 
-pub struct DbusProxy {
-    pub socket: String,
-    pub lifetime_fd: i32,
-    _child: std::process::Child,
+struct Service {
+    name: &'static str,
+    pid: libc::pid_t,
+    pidfd: OwnedFd,
+    /// Held open until teardown: xdg-dbus-proxy exits when it closes.
+    ready: Option<OwnedFd>,
 }
 
-fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusProxy> {
+fn pidfd_open(pid: libc::pid_t) -> io::Result<OwnedFd> {
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(fd as i32) })
+}
+
+/// Runs in a fresh child of seal. The getppid check covers seal dying between
+/// fork and prctl, which PDEATHSIG alone would miss.
+fn die_with_seal(signal: libc::c_int, seal_pid: u32) -> io::Result<()> {
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, signal as libc::c_ulong, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { libc::getppid() } as u32 != seal_pid {
+        return Err(io::Error::other("seal exited during startup"));
+    }
+    Ok(())
+}
+
+fn spawn_service(
+    name: &'static str,
+    mut cmd: Command,
+    ready: Option<OwnedFd>,
+) -> io::Result<Service> {
+    use std::os::unix::process::CommandExt;
+    let seal_pid = std::process::id();
+    unsafe { cmd.pre_exec(move || die_with_seal(libc::SIGKILL, seal_pid)) };
+    let child = cmd
+        .spawn()
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {}", name, e)))?;
+    let pid = child.id() as libc::pid_t;
+    Ok(Service {
+        name,
+        pid,
+        pidfd: pidfd_open(pid)?,
+        ready,
+    })
+}
+
+/// Block until every service with a ready fd has signalled.
+fn await_ready(services: &[Service]) -> io::Result<()> {
+    let mut waiting: Vec<&Service> = services.iter().filter(|s| s.ready.is_some()).collect();
+    while !waiting.is_empty() {
+        let mut fds: Vec<libc::pollfd> = waiting
+            .iter()
+            .flat_map(|s| {
+                [
+                    s.ready.as_ref().map(|f| f.as_raw_fd()).unwrap_or(-1),
+                    s.pidfd.as_raw_fd(),
+                ]
+                .map(|fd| libc::pollfd {
+                    fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                })
+            })
+            .collect();
+        if unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) } < 0 {
+            let e = io::Error::last_os_error();
+            if e.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(e);
+        }
+        let mut still_waiting = Vec::new();
+        for (service, pair) in waiting.iter().zip(fds.chunks(2)) {
+            // Ready is checked first: a helper may signal and exit together.
+            if pair[0].revents != 0 {
+                let mut byte = [0u8];
+                let n =
+                    unsafe { libc::read(pair[0].fd, byte.as_mut_ptr() as *mut libc::c_void, 1) };
+                if n != 1 {
+                    return Err(io::Error::other(format!(
+                        "{} failed to start",
+                        service.name
+                    )));
+                }
+                continue;
+            }
+            if pair[1].revents != 0 {
+                return Err(io::Error::other(format!(
+                    "{} exited before it was ready",
+                    service.name
+                )));
+            }
+            still_waiting.push(*service);
+        }
+        waiting = still_waiting;
+    }
+    Ok(())
+}
+
+fn stop(services: Vec<Service>) {
+    for s in &services {
+        unsafe { libc::kill(s.pid, libc::SIGKILL) };
+    }
+    for s in services {
+        unsafe { libc::waitpid(s.pid, std::ptr::null_mut(), 0) };
+    }
+}
+
+fn spawn_dbus_proxy(args: &SandboxArgs, socket: &str) -> io::Result<Service> {
     use std::os::unix::process::CommandExt;
 
     let dbus_addr = env::var("DBUS_SESSION_BUS_ADDRESS")
         .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "DBUS_SESSION_BUS_ADDRESS not set"))?;
-
-    // Proxy writes a ready byte to the write end; parent keeps the read end
-    // open in bwrap. When bwrap exits, POLLHUP fires on the proxy's write end
-    // (G_IO_HUP in GLib) and the proxy exits.
-    let mut fds = [0i32; 2];
-    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let (parent_fd, proxy_fd) = (fds[0], fds[1]);
-
-    let socket = format!("{}/seal-dbus.sock", xdg_runtime);
+    let (ready_r, ready_w) = cloexec_pipe()?;
+    let proxy_fd = ready_w.as_raw_fd();
 
     let mut cmd = Command::new(XDG_DBUS_PROXY);
     cmd.arg(&dbus_addr)
-        .arg(&socket)
+        .arg(socket)
         .arg("--filter")
-        .arg(format!("--fd={}", proxy_fd));
-    for name in &args.dbus_talk {
-        cmd.arg(format!("--talk={}", name));
-    }
-    for name in &args.dbus_own {
-        cmd.arg(format!("--own={}", name));
-    }
-
-    // Clear CLOEXEC on proxy_fd so the child inherits it
+        .arg(format!("--fd={}", proxy_fd))
+        .args(args.dbus_talk.iter().map(|n| format!("--talk={}", n)))
+        .args(args.dbus_own.iter().map(|n| format!("--own={}", n)));
     unsafe {
         cmd.pre_exec(move || {
             let flags = libc::fcntl(proxy_fd, libc::F_GETFD);
@@ -845,311 +1226,235 @@ fn spawn_dbus_proxy(args: &SandboxArgs, xdg_runtime: &str) -> io::Result<DbusPro
             Ok(())
         });
     }
-
-    let child = cmd.spawn()?;
-
-    // Close proxy_fd in the parent — only the proxy needs it
-    unsafe { libc::close(proxy_fd) };
-
-    // Block until the proxy signals readiness. 5s timeout covers slow startup.
-    let mut pfd = libc::pollfd {
-        fd: parent_fd,
-        events: libc::POLLIN | libc::POLLHUP,
-        revents: 0,
-    };
-    let ret = unsafe { libc::poll(&mut pfd, 1, 5000) };
-    let mut buf = [0u8; 1];
-    let n = if ret > 0 {
-        unsafe { libc::read(parent_fd, buf.as_mut_ptr() as *mut libc::c_void, 1) }
-    } else {
-        0
-    };
-    if n != 1 {
-        unsafe { libc::close(parent_fd) };
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "dbus proxy did not become ready",
-        ));
-    }
-
-    Ok(DbusProxy {
-        socket,
-        lifetime_fd: parent_fd,
-        _child: child,
-    })
+    let service = spawn_service("dbus proxy", cmd, Some(ready_r))?;
+    drop(ready_w);
+    Ok(service)
 }
 
-// ---------------------------------------------------------------------------
-// PipeWire proxy
-// ---------------------------------------------------------------------------
-
-struct PipewireProxy {
-    socket: String,
-    pw_child: std::process::Child,
-    wp_child: std::process::Child,
-}
-
-fn spawn_pipewire_proxy(xdg_runtime: &str, capture: bool) -> io::Result<PipewireProxy> {
+/// pipewire + wireplumber. pipewire is socket-activated: seal binds the
+/// listening socket, so it is connectable before pipewire even runs.
+fn spawn_pipewire_proxy(
+    xdg_runtime: &str,
+    run_dir: &str,
+    socket: &str,
+    capture: bool,
+) -> io::Result<Vec<Service>> {
     use std::os::unix::process::CommandExt;
-    let name = format!("seal-pw-{}", unsafe { libc::getpid() });
-    let socket = format!("{}/{}", xdg_runtime, name);
+
+    let name = Path::new(socket)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_owned();
     let conf = if capture {
         PIPEWIRE_SANDBOX_CAPTURE_CONF
     } else {
         PIPEWIRE_SANDBOX_CONF
     };
 
-    let pulse_server = format!("unix:{}/pulse/native", xdg_runtime);
-    let mut pw_cmd = Command::new(PIPEWIRE);
-    pw_cmd
-        .arg("-c")
+    let listener = std::os::unix::net::UnixListener::bind(socket)?;
+    let listen_fd = listener.as_raw_fd();
+
+    let mut pw = Command::new(PIPEWIRE);
+    pw.arg("-c")
         .arg(conf)
         .env("PIPEWIRE_CORE", &name)
-        .env("XDG_RUNTIME_DIR", xdg_runtime)
-        .env("PULSE_SERVER", &pulse_server);
+        .env("XDG_RUNTIME_DIR", run_dir)
+        .env("PULSE_SERVER", format!("unix:{}/pulse/native", xdg_runtime))
+        .env("LISTEN_FDS", "1");
     unsafe {
-        pw_cmd.pre_exec(|| {
-            libc::prctl(
-                libc::PR_SET_PDEATHSIG,
-                libc::SIGTERM as libc::c_int,
-                0,
-                0,
-                0,
-            );
+        pw.pre_exec(move || {
+            // Socket activation hands fds over starting at 3.
+            if listen_fd == 3 {
+                let flags = libc::fcntl(3, libc::F_GETFD);
+                libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            } else if libc::dup2(listen_fd, 3) < 0 {
+                return Err(io::Error::last_os_error());
+            }
             Ok(())
         });
     }
-    let pw_child = pw_cmd
-        .spawn()
-        .map_err(|e| io::Error::new(e.kind(), format!("pipewire: {}", e)))?;
-
-    let mut ready = false;
-    for _ in 0..50 {
-        if Path::new(&socket).exists() {
-            ready = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    if !ready {
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "pipewire proxy: socket did not appear",
-        ));
-    }
+    let pipewire = spawn_service("pipewire", pw, None)?;
+    drop(listener);
 
     let mut wp = Command::new(WIREPLUMBER);
     wp.arg("--profile")
         .arg("policy")
         .env("PIPEWIRE_REMOTE", &name)
-        .env("XDG_RUNTIME_DIR", xdg_runtime);
+        .env("XDG_RUNTIME_DIR", run_dir);
     if !WIREPLUMBER_SHARE.is_empty() {
         wp.env("XDG_DATA_DIRS", WIREPLUMBER_SHARE);
     }
-    unsafe {
-        wp.pre_exec(|| {
-            libc::prctl(
-                libc::PR_SET_PDEATHSIG,
-                libc::SIGTERM as libc::c_int,
-                0,
-                0,
-                0,
-            );
-            Ok(())
-        });
-    }
-    let wp_child = wp
-        .spawn()
-        .map_err(|e| io::Error::new(e.kind(), format!("wireplumber: {}", e)))?;
+    let wireplumber = spawn_service("wireplumber", wp, None)?;
 
-    Ok(PipewireProxy {
-        socket,
-        pw_child,
-        wp_child,
-    })
+    Ok(vec![pipewire, wireplumber])
 }
 
 // ---------------------------------------------------------------------------
-// Pasta orchestrator
+// Pasta network
 // ---------------------------------------------------------------------------
 //
-// When --pasta is set, bwrap creates a fresh netns (via --unshare-all without
-// --share-net) but it has only `lo`. We bridge it to the host network via
-// `pasta`, attached to the netns by PID. Sequence:
+// For `--net=all` and zone sets, seal builds the sandbox's network before bwrap
+// exists, then runs bwrap inside it with --share-net:
 //
-//   1. Parent (pre-exec) creates two pipes: info (bwrap -> orchestrator) and
-//      block (orchestrator -> bwrap).
-//   2. Parent forks an orchestrator child.
-//   3. Parent clears CLOEXEC on the bwrap-side ends and passes them via
-//      --info-fd / --block-fd, then execs into bwrap.
-//   4. bwrap sets up namespaces, writes JSON containing child-pid to info-fd,
-//      then blocks reading from block-fd.
-//   5. Orchestrator reads the PID, spawns pasta against /proc/<pid>/ns/net,
-//      writes a byte to block-fd to unblock, and waits on pasta. When the
-//      sandbox exits and the netns is torn down, pasta exits, the orchestrator
-//      exits.
+//   1. Fork a helper. It stays in the host netns, which pasta needs for its
+//      outbound sockets.
+//   2. seal unshares a user + net namespace and maps its own uid into it.
+//   3. The helper loads the zone firewall into that netns, then attaches
+//      pasta, then signals ready. Firewall first, so the link never comes up
+//      unfiltered.
+//   4. bwrap's payload lands in a user namespace nested below the netns
+//      owner and so holds no capabilities over the firewall.
+//
+// Acting on bwrap's own child instead races it: bwrap reports the PID right
+// after clone(), before writing its uid map, and later moves into a nested
+// userns for devpts.
 
-pub struct PastaOrchestrator {
-    pub info_fd: i32,
-    pub block_fd: i32,
-    pub _child_pid: libc::pid_t,
-}
+/// Move seal into a fresh user + net namespace and start the helper that
+/// firewalls and bridges it. Must be the last service spawned: everything
+/// after it inherits the new netns.
+fn spawn_network(args: &SandboxArgs) -> io::Result<Service> {
+    let pasta = pasta_args(args.net, &args.publish, args.pasta_mac.as_deref());
+    let firewall = match args.net {
+        Net::Zones(zones) => Some(firewall_ruleset(zones)),
+        Net::None | Net::Shared | Net::All => None,
+    };
+    let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+    let seal_pid = std::process::id();
 
-fn spawn_pasta_orchestrator(args: &SandboxArgs) -> io::Result<PastaOrchestrator> {
-    let mut info = [0i32; 2];
-    let mut block = [0i32; 2];
-    if unsafe { libc::pipe2(info.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if unsafe { libc::pipe2(block.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let (info_r, info_w) = (info[0], info[1]);
-    let (block_r, block_w) = (block[0], block[1]);
-
-    let tcp = args.pasta_tcp.clone();
-    let udp = args.pasta_udp.clone();
-    let mac = args.pasta_mac.clone();
+    let (entered_r, entered_w) = cloexec_pipe()?;
+    let (ready_r, ready_w) = cloexec_pipe()?;
 
     let pid = unsafe { libc::fork() };
     if pid < 0 {
         return Err(io::Error::last_os_error());
     }
     if pid == 0 {
-        // Orchestrator child. Drop the bwrap-side fds.
-        unsafe {
-            libc::close(info_w);
-            libc::close(block_r);
+        drop(entered_w);
+        drop(ready_r);
+        let mut byte = [0u8];
+        let entered = die_with_seal(libc::SIGKILL, seal_pid).is_ok()
+            && unsafe {
+                libc::read(
+                    entered_r.as_raw_fd(),
+                    byte.as_mut_ptr() as *mut libc::c_void,
+                    1,
+                )
+            } == 1;
+        let ok = entered
+            && setup_pasta_net(seal_pid, &pasta, firewall.as_deref())
+                .map_err(|e| eprintln!("seal: network: {}", e))
+                .is_ok();
+        if ok {
+            unsafe {
+                libc::write(
+                    ready_w.as_raw_fd(),
+                    [1u8].as_ptr() as *const libc::c_void,
+                    1,
+                )
+            };
         }
-        let code = orchestrator_main(info_r, block_w, &tcp, &udp, mac.as_deref());
-        unsafe { libc::_exit(code) };
+        unsafe { libc::_exit(if ok { 0 } else { 1 }) };
     }
+    drop(entered_r);
+    drop(ready_w);
+    let service = Service {
+        name: "network",
+        pid,
+        pidfd: pidfd_open(pid)?,
+        ready: Some(ready_r),
+    };
 
-    // Parent. Drop the orchestrator-side fds and clear CLOEXEC on the rest so
-    // bwrap inherits them across exec.
+    // On failure the helper reads EOF and exits; await_ready never runs.
+    enter_user_net_namespace(uid, gid)?;
     unsafe {
-        libc::close(info_r);
-        libc::close(block_w);
-    }
-    for fd in [info_w, block_r] {
-        unsafe {
-            let flags = libc::fcntl(fd, libc::F_GETFD);
-            libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-        }
-    }
-
-    Ok(PastaOrchestrator {
-        info_fd: info_w,
-        block_fd: block_r,
-        _child_pid: pid,
-    })
+        libc::write(
+            entered_w.as_raw_fd(),
+            [1u8].as_ptr() as *const libc::c_void,
+            1,
+        )
+    };
+    Ok(service)
 }
 
-fn orchestrator_main(
-    info_fd: i32,
-    block_fd: i32,
-    tcp: &[String],
-    udp: &[String],
-    mac: Option<&str>,
-) -> i32 {
-    // Read bwrap's --info-fd JSON until we can extract child-pid.
-    let mut buf = Vec::with_capacity(1024);
-    let mut tmp = [0u8; 1024];
-    let child_pid = loop {
-        let n = unsafe { libc::read(info_fd, tmp.as_mut_ptr() as *mut libc::c_void, tmp.len()) };
-        if n <= 0 {
-            break parse_child_pid(&buf);
-        }
-        buf.extend_from_slice(&tmp[..n as usize]);
-        if let Some(p) = parse_child_pid(&buf) {
-            break Some(p);
-        }
-    };
-    let Some(pid) = child_pid else {
-        eprintln!("seal: pasta: could not read child PID from bwrap info-fd");
-        return 1;
-    };
-    unsafe { libc::close(info_fd) };
+fn cloexec_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0i32; 2];
+    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
 
-    // Pass both userns and netns: bwrap's netns is owned by bwrap's userns, so
-    // pasta needs to enter the userns to get CAP_SYS_ADMIN before it can join
-    // the netns.
-    //
-    // We deliberately do NOT pass --foreground: pasta's default is to set up
-    // the netns synchronously, then daemonize. The exit of the spawned
-    // (parent) process is itself the readiness signal — when wait() returns,
-    // the tap interface and DHCP/NDP responses are configured, and the
-    // detached daemon child is running. No pid-file polling, no race.
-    let netns = format!("/proc/{}/ns/net", pid);
-    let userns = format!("/proc/{}/ns/user", pid);
-    let mut cmd = Command::new(PASTA);
-    cmd.arg("--quiet")
-        .arg("--config-net")
-        // Translate host-loopback forwards to namespace loopback so apps
-        // bound to 127.0.0.1 inside the sandbox stay reachable via the host
-        // loopback forward without per-app config tweaks.
-        .arg("--host-lo-to-ns-lo")
-        // Disable namespace -> host forwarding entirely. Pasta's defaults
-        // (-T auto, -U auto) would bind every host-listening port inside the
-        // namespace as a transparent forward, which both leaks host services
-        // into the sandbox and steals ports the sandboxed app might want
-        // (e.g. syncthing's 22000). For our app-sandbox use case the sandbox
-        // should reach the internet, not host localhost services.
-        .arg("-T")
-        .arg("none")
-        .arg("-U")
-        .arg("none")
+fn enter_user_net_namespace(uid: libc::uid_t, gid: libc::gid_t) -> io::Result<()> {
+    if unsafe { libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNET) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    fs::write("/proc/self/setgroups", "deny")?;
+    fs::write("/proc/self/uid_map", format!("{uid} {uid} 1"))?;
+    fs::write("/proc/self/gid_map", format!("{gid} {gid} 1"))?;
+    Ok(())
+}
+
+/// Runs in the helper, in the host netns, once seal is in its new namespaces.
+fn setup_pasta_net(seal_pid: u32, pasta: &[String], firewall: Option<&str>) -> io::Result<()> {
+    let userns = format!("/proc/{}/ns/user", seal_pid);
+    let netns = format!("/proc/{}/ns/net", seal_pid);
+
+    if let Some(rules) = firewall {
+        load_firewall(&userns, &netns, rules)?;
+    }
+
+    // pasta configures the netns, then daemonizes; its exit is the readiness
+    // signal. The daemon quits when the netns goes away.
+    let status = Command::new(PASTA)
+        .args(pasta)
         .arg("--userns")
         .arg(&userns)
         .arg("--netns")
-        .arg(&netns);
-    if let Some(ref mac) = mac {
-        cmd.arg("--ns-mac-addr").arg(mac);
-    }
-    for spec in tcp {
-        cmd.arg("-t").arg(spec);
-    }
-    for spec in udp {
-        cmd.arg("-u").arg(spec);
-    }
-    if tcp.is_empty() {
-        cmd.arg("-t").arg("none");
-    }
-    if udp.is_empty() {
-        cmd.arg("-u").arg("none");
-    }
-
-    let status = match cmd.status() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("seal: pasta: failed to spawn: {}", e);
-            let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
-            return 1;
-        }
-    };
+        .arg(&netns)
+        .status()?;
     if !status.success() {
-        eprintln!("seal: pasta: setup failed: {}", status);
-        let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
-        return 1;
+        return Err(io::Error::other(format!("pasta exited with {}", status)));
     }
-
-    // Pasta is up and daemonized; unblock bwrap.
-    let _ = unsafe { libc::write(block_fd, b"\0".as_ptr() as *const _, 1) };
-    unsafe { libc::close(block_fd) };
-    0
+    Ok(())
 }
 
-fn parse_child_pid(buf: &[u8]) -> Option<u32> {
-    let s = std::str::from_utf8(buf).ok()?;
-    let i = s.find("\"child-pid\"")?;
-    let rest = &s[i + "\"child-pid\"".len()..];
-    let after_colon = rest.find(':')?;
-    let digits: String = rest[after_colon + 1..]
-        .chars()
-        .skip_while(|c| c.is_whitespace())
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    digits.parse().ok()
+#[link(name = "nftables")]
+unsafe extern "C" {
+    fn nft_ctx_new(flags: u32) -> *mut libc::c_void;
+    fn nft_run_cmd_from_buffer(ctx: *mut libc::c_void, buf: *const libc::c_char) -> libc::c_int;
+}
+
+/// Load an nftables ruleset into a netns from a child that joins the netns's
+/// owning userns. libnftables runs in-process: an exec would drop the
+/// capabilities setns just granted.
+fn load_firewall(userns: &str, netns: &str, rules: &str) -> io::Result<()> {
+    let user = fs::File::open(userns)?;
+    let net = fs::File::open(netns)?;
+    let rules = std::ffi::CString::new(rules).map_err(io::Error::other)?;
+
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if pid == 0 {
+        let loaded = unsafe {
+            libc::setns(user.as_raw_fd(), libc::CLONE_NEWUSER) == 0
+                && libc::setns(net.as_raw_fd(), libc::CLONE_NEWNET) == 0
+                && {
+                    let ctx = nft_ctx_new(0);
+                    !ctx.is_null() && nft_run_cmd_from_buffer(ctx, rules.as_ptr()) == 0
+                }
+        };
+        unsafe { libc::_exit(if loaded { 0 } else { 1 }) };
+    }
+
+    let mut status = 0i32;
+    unsafe { libc::waitpid(pid, &mut status, 0) };
+    if !(libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0) {
+        return Err(io::Error::other("firewall could not be loaded"));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1277,11 +1582,11 @@ mod tests {
     fn cli_args_flags() {
         let out = sa(|a| {
             a.gui = true;
-            a.network = true;
+            a.cage = true;
         })
         .to_cli_args();
         assert!(out.contains(&"--gui".into()));
-        assert!(out.contains(&"--network".into()));
+        assert!(out.contains(&"--cage".into()));
     }
 
     #[test]
@@ -1332,69 +1637,41 @@ mod tests {
     }
 
     #[test]
-    fn cli_args_pasta_flag() {
-        let out = sa(|a| a.pasta = true).to_cli_args();
-        assert!(out.contains(&"--pasta".into()));
-    }
-
-    #[test]
-    fn cli_args_pasta_tcp() {
+    fn cli_args_net_and_publish() {
         let out = sa(|a| {
-            a.pasta = true;
-            a.pasta_tcp.push("127.0.0.1/8384".into());
+            a.net = "internet,lan".parse().unwrap();
+            a.publish.push("tcp:127.0.0.1/8384".parse().unwrap());
         })
         .to_cli_args();
-        assert!(out.contains(&"--pasta-tcp=127.0.0.1/8384".into()));
+        assert!(out.contains(&"--net=internet,lan".into()));
+        assert!(out.contains(&"--publish=tcp:127.0.0.1/8384".into()));
     }
 
     #[test]
-    fn cli_args_pasta_udp() {
-        let out = sa(|a| {
-            a.pasta = true;
-            a.pasta_udp.push("21027".into());
-        })
-        .to_cli_args();
-        assert!(out.contains(&"--pasta-udp=21027".into()));
+    fn net_parse_round_trips() {
+        for s in [
+            "none",
+            "shared",
+            "all",
+            "internet",
+            "lan,host",
+            "internet,lan,host",
+        ] {
+            assert_eq!(s.parse::<Net>().unwrap().to_string(), s);
+        }
     }
 
     #[test]
-    fn need_network_files_via_network() {
-        assert!(sa(|a| a.network = true).need_network_files());
+    fn net_parse_rejects_mixed_and_unknown() {
+        assert!("all,lan".parse::<Net>().is_err());
+        assert!("internet,shared".parse::<Net>().is_err());
+        assert!("wan".parse::<Net>().is_err());
     }
 
     #[test]
-    fn need_network_files_via_pasta() {
-        assert!(sa(|a| a.pasta = true).need_network_files());
-    }
-
-    #[test]
-    fn need_network_files_off() {
+    fn need_network_files_by_net() {
+        assert!(sa(|a| a.net = Net::Shared).need_network_files());
+        assert!(sa(|a| a.net = Net::All).need_network_files());
         assert!(!SandboxArgs::default().need_network_files());
-    }
-
-    #[test]
-    fn parse_child_pid_basic() {
-        assert_eq!(parse_child_pid(b"{\"child-pid\": 12345}"), Some(12345));
-    }
-
-    #[test]
-    fn parse_child_pid_no_space() {
-        assert_eq!(parse_child_pid(b"{\"child-pid\":42}"), Some(42));
-    }
-
-    #[test]
-    fn parse_child_pid_with_other_fields() {
-        let buf = b"{\"child-pid\": 99, \"uid-map\": \"...\"}";
-        assert_eq!(parse_child_pid(buf), Some(99));
-    }
-
-    #[test]
-    fn parse_child_pid_partial() {
-        assert_eq!(parse_child_pid(b"{\"child-pid\":"), None);
-    }
-
-    #[test]
-    fn parse_child_pid_missing() {
-        assert_eq!(parse_child_pid(b"{\"foo\": 1}"), None);
     }
 }

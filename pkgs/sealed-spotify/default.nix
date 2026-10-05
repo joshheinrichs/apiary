@@ -13,7 +13,7 @@ pkgs.runCommand "sealed-spotify"
       --gui \
       --gpu-render \
       --cage \
-      --pasta \
+      --net=internet \
       --pasta-mac=02:00:00:00:00:00 \
       --dbus-own=org.mpris.MediaPlayer2.spotify \
       --dbus-talk=org.freedesktop.DBus \

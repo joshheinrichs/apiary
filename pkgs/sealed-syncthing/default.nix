@@ -1,7 +1,7 @@
 { pkgs, seal }:
 pkgs.lib.makeOverridable (
   {
-    extraArgs ? [ "--pasta-tcp=127.0.0.1/8384" ],
+    extraArgs ? [ "--publish=tcp:127.0.0.1/8384" ],
   }:
   let
     closure = pkgs.closureInfo { rootPaths = [ pkgs.syncthing ]; };
@@ -13,7 +13,7 @@ pkgs.lib.makeOverridable (
     ''
       seal-generator install \
         --persist-home=syncthing \
-        --pasta \
+        --net=internet,lan \
         --bin=syncthing \
         "--ro-bind-file=${closure}/store-paths" \
         ${pkgs.lib.escapeShellArgs extraArgs} \

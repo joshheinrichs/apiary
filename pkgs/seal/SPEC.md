@@ -23,11 +23,24 @@ Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in 
 | `--pulse` | — |
 | `--pipewire` | — |
 | `--gpu` | — |
-| `--network` | — |
-| `--pasta` | — |
 | `--camera` | — |
 
-`--network` and `--pasta` are mutually exclusive. `--network` shares the host network namespace; `--pasta` keeps the netns unshared and bridges it to the host via `pasta` (see [Pasta networking](#pasta-networking) below).
+### Network
+
+`--net=POLICY` sets what the sandbox can reach. Default `none`: loopback only.
+
+| Policy | Netns | Reaches |
+|--------|-------|---------|
+| `none` | private, no link | nothing |
+| `internet`, `lan`, `host`, or a comma-separated set | private, bridged by pasta | the listed zones |
+| `all` | private, bridged by pasta | everything, no firewall |
+| `shared` | the host's | everything, including binding host ports |
+
+Zones: `host` is this machine's loopback; `lan` is private, CGNAT, link-local and multicast ranges (IPv4 and IPv6); `internet` is everything else. DNS is allowed whenever `lan` or `internet` is. `all` and `shared` can't be combined with zones.
+
+`--publish=tcp:SPEC` / `--publish=udp:SPEC` forwards a host port in, SPEC in `pasta -t`/`-u` syntax (`8384`, `127.0.0.1/8384`, `8384:9000`). Pasta policies only.
+
+`--pasta-mac=ADDR` sets the sandbox interface's MAC.
 
 ### Home
 
@@ -39,12 +52,6 @@ Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in 
 
 `--dbus-talk=NAME` and `--dbus-own=NAME` spawn an `xdg-dbus-proxy` with `--filter`. If either is given, a proxy is started before bwrap and its socket is bind-mounted into the sandbox.
 
-### Pasta networking
-
-`--pasta` keeps the sandbox netns unshared (no `--share-net` to bwrap) and attaches a userspace network bridge (`pasta`, from passt) to it. Rootless: needs no `CAP_NET_ADMIN`.
-
-`--pasta-tcp=SPEC` and `--pasta-udp=SPEC` are repeatable port-forwarding specs passed verbatim to `pasta -t SPEC` / `pasta -u SPEC`. See `pasta(1)` for SPEC syntax. Examples: `8384` (forward host port 8384 → guest 8384), `127.0.0.1/8384` (bind only host's loopback), `8384:9000` (host 8384 → guest 9000). When neither flag is given, pasta runs with `-t none -u none` (outbound-only).
-
 ### Environment
 
 `--set-env=KEY=VALUE` — set an env var inside the sandbox.  
@@ -54,7 +61,8 @@ Both binaries are compiled with `BWRAP`, `XDG_DBUS_PROXY`, and `PASTA` baked in 
 
 `--ro-bind=HOST:DEST` — read-only bind mount.  
 `--rw-bind=HOST:DEST` — read-write bind mount.  
-`--tmpfs=PATH` — tmpfs at PATH.
+`--tmpfs=PATH` — tmpfs at PATH.  
+`--device=PATH` — pass a device node through (`--dev-bind-try`), e.g. `/dev/ntsync`.
 
 ### Other
 
@@ -86,9 +94,10 @@ Ephemeral: `--dir $HOME`
 
 ```
 --tmpfs /etc
---file <fd> /etc/passwd      # minimal: root + current user
---file <fd> /etc/group       # minimal: root + current user's primary group
+--file <fd> /etc/passwd      # the current user, real uid/gid
+--file <fd> /etc/group       # the current user's primary group, real gid
 --file <fd> /etc/hostname    # contains the --hostname value
+--file <fd> /run/host/container-manager   # "seal": the container interface marker; SDL then watches /dev/input instead of udev
 --ro-bind /etc/localtime /etc/localtime   # if it exists on host
 ```
 
@@ -97,45 +106,41 @@ Ephemeral: `--dir $HOME`
 ```
 --die-with-parent
 --unshare-all
---share-net          # only if --network
+--share-net          # --net=shared, or any pasta policy (see Pasta network)
 ```
 
-### Network files (only if --network or --pasta)
+### Network files (any policy but none)
 
 ```
 --ro-bind /etc/hosts /etc/hosts
 --ro-bind /etc/nsswitch.conf /etc/nsswitch.conf
---ro-bind /etc/resolv.conf /etc/resolv.conf
+--ro-bind /etc/resolv.conf /etc/resolv.conf     # --net=shared
+--file <fd> /etc/resolv.conf                    # pasta: "nameserver 169.254.1.1"
 --ro-bind /etc/ssl /etc/ssl
 --setenv TZ $TZ      # if TZ is set on host
 ```
 
-### Pasta orchestration (only if --pasta)
+### Pasta network (`all` and zone sets)
 
-bwrap is told to communicate setup with a sibling orchestrator process via two pipes:
+seal builds the network before bwrap runs, then runs bwrap inside it with `--share-net`:
 
-```
---info-fd <N>    # bwrap writes JSON {"child-pid": ...} once namespaces are set up
---block-fd <M>   # bwrap blocks on this fd before exec'ing the payload
-```
+1. Fork a helper, which stays in the host netns (pasta's outbound sockets live there).
+2. seal unshares a user + net namespace and maps its own uid/gid into it.
+3. The helper loads the zone firewall, then attaches pasta, then reports back. Firewall first, so the link never comes up unfiltered.
+4. The helper signals ready (see [Services](#services)). Any failure in 2–3 aborts the sandbox.
 
-The orchestration sequence:
+The payload ends up in bwrap's user namespace, nested below the one that owns the netns, so it has no capabilities over the firewall. Verified: `nft flush ruleset` is refused inside, including from a further nested userns.
 
-1. Before forking the dbus proxy / before exec, seal creates `info_pipe` (orchestrator reads, bwrap writes) and `block_pipe` (orchestrator writes, bwrap reads).
-2. seal forks the **pasta orchestrator** child. The orchestrator-side ends are kept open in the child; the bwrap-side ends have `FD_CLOEXEC` cleared in the parent so they survive `exec` into bwrap.
-3. seal `exec`s into bwrap with `--info-fd` / `--block-fd` referring to the bwrap-side fd numbers.
-4. bwrap creates namespaces, writes `{"child-pid": N}` to `info_pipe`, blocks on `block_pipe`.
-5. Orchestrator reads the PID and runs `pasta --quiet --config-net --host-lo-to-ns-lo -T none -U none --userns /proc/<PID>/ns/user --netns /proc/<PID>/ns/net [-t SPEC|none] [-u SPEC|none]`, then waits for it to exit.
+The firewall is an nftables `output` chain in table `inet seal`, policy = the `internet` verdict: loopback and established traffic pass, then DNS to the forwarder, the host address, and the LAN ranges are each accepted or dropped per zone. It's loaded from a forked child that `setns`es into the namespaces and calls libnftables in-process — exec'ing `nft` would drop the capabilities setns grants, since the uid isn't root there.
 
-   - `--host-lo-to-ns-lo`: translates host-loopback forwards to the sandbox's loopback so apps that bind `127.0.0.1` inside stay reachable via the host loopback forward.
-   - `-T none -U none`: disables pasta's default namespace→host forwarding (`-T auto -U auto`). The defaults would create transparent in-namespace listeners for every host-bound port, which both leaks host services into the sandbox and steals ports the sandboxed app may want (e.g. syncthing's TCP/UDP 22000 conflicts with a host syncthing's matching binds).
-6. Pasta sets up the tap interface synchronously and daemonizes (default behavior — no `--foreground`); the spawned process exits with status 0 once setup is complete. That exit is the readiness signal — no pid file polling, no race.
-7. Orchestrator writes one byte to `block_pipe` to unblock bwrap, then exits. The detached pasta daemon stays alive until the netns is torn down (default behavior; no `--no-netns-quit`).
-8. bwrap unblocks and `exec`s the payload, which runs in the unshared netns bridged by pasta.
+pasta runs `--config-net --host-lo-to-ns-lo -T none -U none --dns-forward 169.254.1.1`, plus `--map-host-loopback 169.254.1.2` when the host is reachable or `--no-map-gw` otherwise, plus the `--publish` forwards (`-t none -u none` when there are none). It configures the netns, daemonizes, and quits when the netns goes away; the foreground exit is the readiness signal.
 
-`--userns` is passed because bwrap's netns is owned by bwrap's user namespace, and pasta needs `CAP_SYS_ADMIN` in that user namespace to enter the netns. Without it, pasta fails with "Couldn't switch to pasta namespaces: Operation not permitted".
+Things that cost time to learn:
 
-If pasta cannot be spawned or its setup fails, the orchestrator still writes the unblock byte so bwrap doesn't hang — the sandbox runs with no network connectivity, with an error on stderr.
+- pasta's default maps the **gateway address to the host's loopback**, so without `--no-map-gw` a sandbox reaches every `127.0.0.1` service via the gateway IP.
+- `-T`/`-U` default to `auto`, which mirrors every host listener into the sandbox and steals those ports.
+- Don't drive pasta or nft off bwrap's `--info-fd` child PID: bwrap reports it right after `clone()`, before writing the uid map, and later moves into a nested userns for devpts. Both race.
+- pasta closes inherited fds at startup, so namespaces have to be passed as `/proc/<pid>/ns/*` paths.
 
 ### UTS + env baseline
 
@@ -188,8 +193,11 @@ PATH is not set automatically. Use `--set-env=PATH=...` to set it explicitly.
 
 ### PipeWire (if --pipewire or --audio or --gui)
 
+`--pipewire` binds the host's PipeWire; `--audio`/`--gui` get a restricted proxy service instead (see [Services](#services)):
+
 ```
---bind-try /run/pipewire /run/pipewire
+--bind-try $RUN/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0      # proxy
+--bind-try /run/pipewire /run/pipewire                      # --pipewire
 --bind-try $XDG_RUNTIME_DIR/pipewire-0 $XDG_RUNTIME_DIR/pipewire-0
 ```
 
@@ -214,16 +222,12 @@ PATH is not set automatically. Use `--set-env=PATH=...` to set it explicitly.
 
 ### DBus proxy (if --dbus-talk or --dbus-own)
 
-xdg-dbus-proxy is started before bwrap with `--filter` and the specified `--talk`/`--own` names. A `socketpair(AF_UNIX, SOCK_STREAM)` is used: the proxy writes a zero byte to its end when ready; seal reads that byte before proceeding, ensuring the proxy is accepting connections before bwrap starts.
-
-The socket appears at `$XDG_RUNTIME_DIR/seal-dbus.sock` and is bound into the sandbox:
-
 ```
---ro-bind $XDG_RUNTIME_DIR/seal-dbus.sock $XDG_RUNTIME_DIR/bus
+--ro-bind $RUN/dbus $XDG_RUNTIME_DIR/bus
 --setenv DBUS_SESSION_BUS_ADDRESS unix:path=$XDG_RUNTIME_DIR/bus
 ```
 
-The proxy's lifetime is tied to bwrap: seal keeps the parent end of the socketpair open across `exec` into bwrap, so when bwrap exits the socket closes and the proxy sees `POLLHUP` and exits.
+A service (see [Services](#services)): `xdg-dbus-proxy --filter` with the `--talk`/`--own` names, readiness on its `--fd` pipe.
 
 ### User-supplied overrides (appended last)
 
@@ -234,6 +238,28 @@ The proxy's lifetime is tied to bwrap: seal keeps the parent end of the socketpa
 ```
 --new-session   # only if --new-session flag given
 ```
+
+---
+
+## Services
+
+The helpers an app needs start in parallel; the app starts once all are ready.
+
+| Service | Started when | Ready |
+|---------|--------------|-------|
+| xdg-dbus-proxy | `--dbus-talk`/`--dbus-own` | a byte on its `--fd` pipe |
+| pipewire + wireplumber | `--audio`, `--gui` | at spawn: socket-activated, seal binds the listening socket and passes it as fd 3 with `LISTEN_FDS=1` |
+| network | `--net=all` or zones | a byte from the helper once the firewall and pasta are up |
+
+The network service is spawned last, because seal itself moves into the sandbox netns there and anything spawned later would follow it.
+
+seal waits with one `poll()` over every ready fd plus each service's pidfd. EOF on a ready fd, or a service exiting before it's ready, fails the sandbox: everything started is killed and the app never runs.
+
+seal stays the parent of the app (bwrap, or cage running bwrap), waits for it, kills the services, and exits with the app's code (128+signal if it was killed).
+
+**Nothing outlives seal.** Every service and the app get `PR_SET_PDEATHSIG=SIGKILL`, plus a `getppid()` check for seal dying between fork and prctl. PDEATHSIG fires when the parent *thread* exits; seal is single-threaded, so that is when seal exits.
+
+**Per-sandbox run dir.** `$RUN = $XDG_RUNTIME_DIR/seal-<pid>/` (0700) holds the dbus socket, the pipewire sockets (pipewire's `XDG_RUNTIME_DIR` points here) and cage's runtime dir. It's removed whole on exit, so no service's own cleanup matters — a SIGKILLed pipewire leaves `-manager` sockets and `.lock` files that seal never needs to know about. Only a SIGKILL of seal itself leaves the dir behind — files only, no processes — until logout clears `/run/user`.
 
 ---
 

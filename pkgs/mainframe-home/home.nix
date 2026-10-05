@@ -155,7 +155,7 @@ in
   # environment.
   home.packages = with pkgs; [
     apiary.apis
-    apiary.steam
+    apiary.sealed-steam
     keepassxc
     libsecret
     gcr_4
@@ -515,7 +515,7 @@ in
       let
         pkg = apiary.sealed-syncthing.override {
           extraArgs = [
-            "--pasta-tcp=127.0.0.1/8384"
+            "--publish=tcp:127.0.0.1/8384"
             "--rw-bind=/home/josh/syncthing:/home/josh/syncthing"
           ];
         };

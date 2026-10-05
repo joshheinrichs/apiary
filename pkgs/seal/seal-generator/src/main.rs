@@ -337,10 +337,10 @@ mod tests {
         assert_eq!(
             wrapper_script(
                 Path::new("/out/bin/seal"),
-                &["--gui".into(), "--network".into()],
+                &["--gui".into(), "--cage".into()],
                 Path::new("/nix/store/abc/bin/spotify"),
             ),
-            "#!/bin/sh\nexec /out/bin/seal --gui --network -- /nix/store/abc/bin/spotify \"$@\"\n",
+            "#!/bin/sh\nexec /out/bin/seal --gui --cage -- /nix/store/abc/bin/spotify \"$@\"\n",
         );
     }
 

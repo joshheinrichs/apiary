@@ -18,7 +18,7 @@ pkgs.runCommand "sealed-discord"
       --gui \
       --gpu-render \
       --wayland \
-      --pasta \
+      --net=internet \
       --pasta-mac=02:00:00:00:00:00 \
       --cage \
       --camera \
