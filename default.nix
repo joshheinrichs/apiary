@@ -42,6 +42,7 @@ in
     mainframe-motherboard-firmware
     firefox
     felucca
+    sloop
     blog
     sealed-syncthing
     gaggimate

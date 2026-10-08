@@ -28,6 +28,7 @@ rec {
   mainframe-devices = import ./mainframe-devices;
   jieli-toolchain = import ./jieli-toolchain { inherit pkgs; };
   felucca = import ./felucca { inherit pkgs jieli-toolchain; };
+  sloop = import ./sloop { inherit pkgs jieli-toolchain; };
   mainframe-motherboard-firmware = import ./mainframe-motherboard-firmware { inherit pkgs; };
   mainframe-system-applicator = import ./mainframe-system-applicator {
     inherit
