@@ -1,0 +1,56 @@
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #E8E8E8;
+    font-family: 'Roboto Slab', serif;
+    font-weight: 300;
+}
+
+div.flex {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+div.card {
+    background-color: #fff;
+    margin: 40px;
+    padding: 20px;
+    max-width: 400px;
+    bordeR: rgba(0,0,0,0.2) solid 1px;
+}
+div.header {
+    margin-bottom: 1em;
+    border-bottom: rgba(0,0,0,0.1) solid 1px;
+    padding-bottom: 0.5em;
+}
+span.name {
+    margin-top: 0;
+    margin-bottom: 0.4em;
+    font-size: 1.6em;
+    font-weight: 400;
+}
+span.title {
+    color: #666;
+    display: block;
+}
+div.content {
+    margin-bottom: 1em;
+    text-align: justify;
+}
+
+a.social {
+    margin: 0 0 0 0.6em;
+}
+a.social:first-of-type {
+    margin-left: 0;
+}
+img.social {
+    height: 24px;
+}
+svg path {
+    fill: #fff;
+}

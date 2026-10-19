@@ -45,6 +45,8 @@ in
     sloop
     blog
     resume
+    joshheinrichs-ca
+    joshheinrichs-ca-applicator
     sealed-syncthing
     gaggimate
     crosspoint-reader

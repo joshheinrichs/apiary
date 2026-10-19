@@ -23,6 +23,10 @@ rec {
   scoper = import ./scoper { inherit pkgs; };
   blog = import ./blog { inherit pkgs; };
   resume = import ./resume { inherit pkgs; };
+  joshheinrichs-ca = import ./joshheinrichs-ca { inherit pkgs resume; };
+  joshheinrichs-ca-applicator = import ./joshheinrichs-ca-applicator {
+    inherit pkgs joshheinrichs-ca;
+  };
   dictate = import ./dictate { inherit pkgs; };
   device-dumper = import ./device-dumper { inherit pkgs; };
   btrmaps = import ./btrmaps { inherit pkgs; };

@@ -1,0 +1,75 @@
+==================================================================
+https://keybase.io/joshheinrichs
+--------------------------------------------------------------------
+
+I hereby claim:
+
+  * I am an admin of https://joshheinrichs.ca
+  * I am joshheinrichs (https://keybase.io/joshheinrichs) on keybase.
+  * I have a public key with fingerprint 1DC6 1E94 D0F5 FCEC 45DE  A7DB 9C08 C4F8 6543 CD50
+
+To do so, I am signing this object:
+
+{
+    "body": {
+        "key": {
+            "eldest_kid": "010193cef639cdcf0e9e60cf5252267650511067865ac50323c56546d5a2e369142c0a",
+            "fingerprint": "1dc61e94d0f5fcec45dea7db9c08c4f86543cd50",
+            "host": "keybase.io",
+            "key_id": "9c08c4f86543cd50",
+            "kid": "010193cef639cdcf0e9e60cf5252267650511067865ac50323c56546d5a2e369142c0a",
+            "uid": "cb2dae6b552208be1ed80d3621d87e19",
+            "username": "joshheinrichs"
+        },
+        "revoke": {
+            "sig_ids": [
+                "d6a2143e007d4b5edf65cd8afd49e8a1417021174c5683ea2e2fbd24a79d5f550f"
+            ]
+        },
+        "service": {
+            "hostname": "joshheinrichs.ca",
+            "protocol": "https:"
+        },
+        "type": "web_service_binding",
+        "version": 1
+    },
+    "ctime": 1473860796,
+    "expire_in": 157680000,
+    "prev": "e4b8a1a57545a0b3e69be267e5478c986ed348ab50eb80715bc907c148fbd6d0",
+    "seqno": 8,
+    "tag": "signature"
+}
+
+which yields the signature:
+
+-----BEGIN PGP MESSAGE-----
+Version: Keybase OpenPGP v2.0.56
+Comment: https://keybase.io/crypto
+
+yMJxAnicrZJdaBVHFMfvtdZiSsDmJZii1nkwFi7JzO587F6rFK34IC1IpT404XZ2
+5uy929zeve5urokirdJY4wfSEk0pvrTFgvWTNBYC9SOxSKvmpUhjLZoWJEQUlRRb
+gwqdDfbNx+7LsrP/85vfOTM/1j+Xqctuf635yEv3c3ezl4Yfd2Y2/Lb+hy3IC3U3
+ym9BHTDzgrKGOCl0BBrlESaYuLYCn9uu0srH4ALHymcWsywuOMOMEMyFw5lUDNuW
+rRhnlGsmLbC5S6ilsEQ55AeVIkTVKKgkBku04gRcqrHPfAWKMg1SaM9V2FHUNzRq
+K82wKSyFcVph5DwZQ0sQmjXzUZjRe0b+f/bunMEpz9ISuMdMNXY8IKAdrG1uEe0I
+IG4ajCGqyA/ApN8P41IJgkoUqFKMtuZQBLWwA9LhxkHRmMco/y7SXFqE2oCx0NRj
+oH3OlHakr6kLjiSUCGwRIqgxc2wwXpbvaYtK4WrmM4Z91G7YZttaoGbg6aiepdCi
+0k6qUZiEKiybv6Ukqcb51CzprqbxTeAVnoIKXlDR5rBMRQ2iOAgrKE9MUiVBSiZU
+2A7HwuU5BF3VIIJCkCaY4A42T7oP1AwSqGeakEwwyiT2bOCuB2b0wKhwlOtw0DZ1
+pMcweA4WhHnKxUIR6pguuU6PMoaNlRDlHaMpiwZphleRSWcEaOvIubbZmWxdZs7z
+s9JLnKmbO++/q/3pkheeNIx+Plm73f/WyrOvnt8zubf8SuMv+xddGumZ906TdfPa
+iYGh/W0DrVf/OtcwsnbJ0lXtT84snl9suj+w8fwFMdhebNo52fLd8qGeW2/u2ffZ
+FC8fGrqysK3TvvPT2zvm/v7y+FjS/En/4t25urAcH2zc/fPw+NHGzNjhD3dtm1gj
+pnunp0a7T5/q/fKLlX2Ts6Jlm9fcPrn+jUffNO/tOl6/znr9vctXj3T13XmwOnt0
+2dTfq1vX7UKLyr3df9649/GCY83fH5roGtxeP3bgowf/rGLowldjoz1Ibm640jZ/
+aevFnQOnrmXPfrvi4a3ZK7ZN/LppevBrcvDF0B0/eeDwY9m/Yc6OP/qC4abr9/4F
+Dh5l6w==
+=fWE1
+-----END PGP MESSAGE-----
+
+And finally, I am proving ownership of this host by posting or
+appending to this document.
+
+View my publicly-auditable identity here: https://keybase.io/joshheinrichs
+
+==================================================================
