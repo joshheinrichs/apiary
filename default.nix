@@ -44,6 +44,7 @@ in
     felucca
     sloop
     blog
+    resume
     sealed-syncthing
     gaggimate
     crosspoint-reader
