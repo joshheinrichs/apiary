@@ -45,7 +45,14 @@ in
     scheduler = "scx_cosmos";
   };
   # gcadapter_oc polls the GameCube adapter every 1ms instead of 8ms.
-  boot.extraModulePackages = [ config.boot.kernelPackages.gcadapter-oc-kmod ];
+  # nixpkgs' package skips modules_install, so it never gets the kmodigest .ko.cer the aggregator needs.
+  boot.extraModulePackages = [
+    (config.boot.kernelPackages.gcadapter-oc-kmod.overrideAttrs (old: {
+      installPhase = old.installPhase + ''
+        ${lib.getExe pkgs.buildPackages.kmodigest} $out/lib/modules/${config.boot.kernelPackages.kernel.modDirVersion}/extra/gcadapter_oc.ko
+      '';
+    }))
+  ];
   boot.kernelModules = [
     "ntsync"
     "gcadapter_oc"

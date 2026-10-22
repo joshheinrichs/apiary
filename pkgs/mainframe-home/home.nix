@@ -24,18 +24,6 @@ let
   micSource = "mic-filter";
   dictate = apiary.dictate.override { target = micSource; };
 
-  rtk-init =
-    pkgs.runCommand "rtk-init"
-      {
-        nativeBuildInputs = [ pkgs.rtk ];
-      }
-      ''
-        export HOME=$TMPDIR/home
-        mkdir -p $HOME/.claude
-        rtk init -g --auto-patch
-        cp -r $HOME/.claude $out
-      '';
-
   # --- seatmux: the TV as a second seat on the same GPU ----------------------
   tvMonitor = apiary.mainframe-devices.monitorByModel "55R617CA";
   tvOutput = outputId tvMonitor;
@@ -194,7 +182,6 @@ in
     pavucontrol
     landrun
     bubblewrap
-    rtk
     (pkgs.writeShellScriptBin "seatmux" ''
       # Only `start` gets the config, the logind backend and the journal. Every
       # other word -- status, stop, or a typo -- goes straight through, so its
@@ -591,18 +578,6 @@ in
       enabled = true;
       mode = "hold";
     };
-    settings.hooks.PreToolUse = [
-      {
-        matcher = "Bash";
-        hooks = [
-          {
-            type = "command";
-            command = "${pkgs.rtk}/bin/rtk hook claude";
-          }
-        ];
-      }
-    ];
-    context = "@${rtk-init}/RTK.md";
   };
   programs.fish = {
     enable = true;
