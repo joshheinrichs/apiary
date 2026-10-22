@@ -99,6 +99,7 @@ Ephemeral: `--dir $HOME`
 --file <fd> /etc/hostname    # contains the --hostname value
 --file <fd> /run/host/container-manager   # "seal": the container interface marker; SDL then watches /dev/input instead of udev
 --ro-bind /etc/localtime /etc/localtime   # if it exists on host
+--ro-bind /etc/zoneinfo /etc/zoneinfo     # if it exists on host
 ```
 
 ### Isolation

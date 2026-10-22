@@ -696,7 +696,7 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
         cmd.dir(&home);
     }
 
-    // /etc with fake passwd + group + localtime + hostname
+    // /etc with fake passwd + group + localtime + zoneinfo + hostname
     cmd.tmpfs("/etc");
     if let Some(fd) = passwd_fd {
         cmd.file(fd, "/etc/passwd");
@@ -706,6 +706,9 @@ pub fn run_sandbox(args: &SandboxArgs, exe: &Path, exe_args: &[OsString]) -> io:
     }
     if Path::new("/etc/localtime").exists() {
         cmd.ro_bind("/etc/localtime", "/etc/localtime");
+    }
+    if Path::new("/etc/zoneinfo").exists() {
+        cmd.ro_bind("/etc/zoneinfo", "/etc/zoneinfo");
     }
     if let Some(fd) = write_pipe(format!("{}\n", args.hostname)) {
         cmd.file(fd, "/etc/hostname");
