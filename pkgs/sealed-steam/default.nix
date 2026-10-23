@@ -12,6 +12,8 @@ pkgs.runCommand "sealed-steam"
     # games) tile in sway like any other app; X11 clients can see each other.
     # The whole store, read-only: the Vulkan drivers behind
     # /run/opengl-driver are host store paths outside any closure we build.
+    # Wine builds GetLogicalProcessorInformation from /sys/devices/system/cpu;
+    # without it MSVC's Concurrency Runtime throws (MapleStory's jypc.dll).
     seal-generator install \
       --bin=steam \
       --gui \
@@ -29,8 +31,10 @@ pkgs.runCommand "sealed-steam"
       --share-tmp=steam \
       --ro-bind=/nix/store:/nix/store \
       --ro-bind=${pkgs.pkgsi686Linux.mesa}:/run/opengl-driver-32 \
+      --ro-bind=/sys/devices/system/cpu:/sys/devices/system/cpu \
       --set-env=PATH=${pkgs.coreutils}/bin \
       --set-env=NIXOS_XDG_OPEN_USE_PORTAL=1 \
+      --set-env=STEAM_EXTRA_COMPAT_TOOLS_PATHS=${pkgs.proton-ge-bin.steamcompattool} \
       ${pkgs.steam} \
       $out
   ''
