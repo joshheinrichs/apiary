@@ -1,19 +1,18 @@
 use std::env;
 use std::path::PathBuf;
 
-// The sherpa-onnx store path is substituted in by Nix at build time (see
-// default.nix); we link its C API and generate bindings from its header.
-// bindgen's libclang comes from rustPlatform.bindgenHook.
-const SHERPA: &str = "@sherpa@";
-
+// Links sherpa-onnx's C API and generates bindings from its header; the store
+// path comes from the derivation. bindgen's libclang is rustPlatform.bindgenHook.
 fn main() {
+    let sherpa = env::var("DICTATE_SHERPA").expect("DICTATE_SHERPA is sherpa-onnx's store path");
     println!("cargo:rerun-if-changed=wrapper.h");
-    println!("cargo:rustc-link-search=native={SHERPA}/lib");
+    println!("cargo:rerun-if-env-changed=DICTATE_SHERPA");
+    println!("cargo:rustc-link-search=native={sherpa}/lib");
     println!("cargo:rustc-link-lib=sherpa-onnx-c-api");
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_arg(format!("-I{SHERPA}/include"))
+        .clang_arg(format!("-I{sherpa}/include"))
         .allowlist_item("SherpaOnnx.*")
         .layout_tests(false)
         .generate()

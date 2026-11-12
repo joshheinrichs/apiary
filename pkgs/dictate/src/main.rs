@@ -1,12 +1,10 @@
 use std::ffi::{CStr, CString};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::mem::MaybeUninit;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
 use std::process::{ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, sleep};
 use std::time::Duration;
@@ -27,140 +25,27 @@ mod sherpa {
     include!(concat!(env!("OUT_DIR"), "/sherpa.rs"));
 }
 
-mod keyboard;
+const PW_RECORD: &str = env!("DICTATE_PW_RECORD");
+const PW_CLI: &str = env!("DICTATE_PW_CLI");
+const WTYPE: &str = env!("DICTATE_WTYPE");
+const MODEL: &str = env!("DICTATE_MODEL");
+const TARGET: &str = env!("DICTATE_TARGET");
 
-// Store paths are substituted in at build time by Nix (see default.nix).
-const PIPEWIRE: &str = "@pipewire@";
-const MODEL: &str = "@model@";
-const TARGET: &str = "@target@";
-
-// 16 kHz mono s16 — the rate Parakeet expects; pw-record resamples to it.
+// 16 kHz mono s16 — the rate Nemotron expects; pw-record resamples to it.
 const SAMPLE_RATE: i32 = 16000;
-// Chunk size for `replay` (the live path decodes back-to-back, no fixed tick).
-const DECODE_INTERVAL_MS: u64 = 300;
+// Silence after the last word, so the final chunk is heard out.
+const TAIL: usize = SAMPLE_RATE as usize;
 
 // ---------------------------------------------------------------------------
-// Pure core (no I/O): the typing reconciler and transcript diffing.
+// Pure core.
 // ---------------------------------------------------------------------------
 
-// A change to a region of `have`: delete `del` chars starting at char index
-// `at`, inserting `ins` there.
-struct Hunk {
-    at: usize,
-    del: usize,
-    ins: String,
-}
-
-// A cursor operation the typist performs. The cursor starts at the end of the
-// field each reconcile (the typist re-anchors it there before applying).
-#[derive(Debug, PartialEq)]
-pub enum Op {
-    Left(usize),
-    Right(usize),
-    Back(usize),
-    Type(String),
-}
-
-// Character-level diff from `have` to `want` as non-overlapping hunks — the
-// separate changed spots. Revising an early word and appending at the end yield
-// two small hunks, not one rewrite of everything between them.
-fn diff(have: &str, want: &str) -> Vec<Hunk> {
-    let h: Vec<char> = have.chars().collect();
-    let w: Vec<char> = want.chars().collect();
-    let (n, m) = (h.len(), w.len());
-    let mut lcs = vec![vec![0u32; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            lcs[i][j] = if h[i] == w[j] {
-                lcs[i + 1][j + 1] + 1
-            } else {
-                lcs[i + 1][j].max(lcs[i][j + 1])
-            };
-        }
-    }
-    let mut hunks = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < n || j < m {
-        if i < n && j < m && h[i] == w[j] {
-            i += 1;
-            j += 1;
-            continue;
-        }
-        let at = i;
-        let mut ins = String::new();
-        while i < n || j < m {
-            if i < n && j < m && h[i] == w[j] {
-                break;
-            }
-            if j < m && (i >= n || lcs[i][j + 1] >= lcs[i + 1][j]) {
-                ins.push(w[j]);
-                j += 1;
-            } else {
-                i += 1;
-            }
-        }
-        hunks.push(Hunk {
-            at,
-            del: i - at,
-            ins,
-        });
-    }
-    hunks
-}
-
-// Turn hunks into cursor ops. The cursor starts at the end of the field (the
-// typist re-anchors it there first). Process right-to-left so each hunk's
-// position in `have` stays valid (edits to the right don't shift positions to
-// the left), then move the cursor back to the end.
-fn plan(hunks: &[Hunk], have_len: usize, want_len: usize) -> Vec<Op> {
-    let mut ops = Vec::new();
-    let mut cursor = have_len;
-    let mut order: Vec<&Hunk> = hunks.iter().collect();
-    order.sort_by_key(|h| std::cmp::Reverse(h.at));
-    for h in order {
-        let target = h.at + h.del;
-        if cursor > target {
-            ops.push(Op::Left(cursor - target));
-        }
-        cursor = target;
-        if h.del > 0 {
-            ops.push(Op::Back(h.del));
-            cursor -= h.del;
-        }
-        let len = h.ins.chars().count();
-        if len > 0 {
-            ops.push(Op::Type(h.ins.clone()));
-            cursor += len;
-        }
-    }
-    if want_len > cursor {
-        ops.push(Op::Right(want_len - cursor));
-    }
-    ops
-}
-
-// Apply ops to an in-memory field with a cursor (replay/tests).
-fn apply_ops_to_string(field: &mut String, ops: &[Op]) {
-    let mut chars: Vec<char> = field.chars().collect();
-    let mut cur = chars.len();
-    for op in ops {
-        match op {
-            Op::Left(n) => cur = cur.saturating_sub(*n),
-            Op::Right(n) => cur = (cur + n).min(chars.len()),
-            Op::Back(n) => {
-                let start = cur.saturating_sub(*n);
-                chars.drain(start..cur);
-                cur = start;
-            }
-            Op::Type(t) => {
-                let ins: Vec<char> = t.chars().collect();
-                let len = ins.len();
-                chars.splice(cur..cur, ins);
-                cur += len;
-            }
-        }
-    }
-    *field = chars.into_iter().collect();
+// What to type now that the transcript reads `text`, given `typed` is already
+// in the field. A streaming transducer only ever appends, so this is the new
+// tail; if it ever doesn't extend what was typed, nothing can be unsaid, so
+// type nothing and carry on from the new text.
+fn fresh<'a>(typed: &str, text: &'a str) -> &'a str {
+    text.strip_prefix(typed).unwrap_or("")
 }
 
 // Convert whole little-endian s16 frames to normalized f32 samples; return the
@@ -174,115 +59,16 @@ fn pcm_to_f32(bytes: &[u8]) -> (Vec<f32>, Option<u8>) {
     (samples, leftover)
 }
 
-// Split text into comparable tokens: lowercased, punctuation stripped.
-fn words_lower(text: &str) -> Vec<String> {
-    text.split_whitespace()
-        .map(|w| {
-            w.chars()
-                .filter(|c| c.is_alphanumeric())
-                .flat_map(char::to_lowercase)
-                .collect()
-        })
-        .filter(|w: &String| !w.is_empty())
-        .collect()
-}
-
-// Longest-common-subsequence word diff of reference `a` vs candidate `b`. Each
-// entry is tagged ' ' (same), '-' (in `a` only → dropped), or '+' (in `b` only
-// → inserted).
-fn word_diff(a: &[String], b: &[String]) -> Vec<(char, String)> {
-    let (n, m) = (a.len(), b.len());
-    let mut lcs = vec![vec![0usize; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            lcs[i][j] = if a[i] == b[j] {
-                lcs[i + 1][j + 1] + 1
-            } else {
-                lcs[i + 1][j].max(lcs[i][j + 1])
-            };
-        }
-    }
-    let mut out = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < n && j < m {
-        if a[i] == b[j] {
-            out.push((' ', a[i].clone()));
-            i += 1;
-            j += 1;
-        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
-            out.push(('-', a[i].clone()));
-            i += 1;
-        } else {
-            out.push(('+', b[j].clone()));
-            j += 1;
-        }
-    }
-    out.extend(a[i..].iter().map(|w| ('-', w.clone())));
-    out.extend(b[j..].iter().map(|w| ('+', w.clone())));
-    out
-}
-
-// Reconcile the field (currently `typed`) toward `want`: the cursor ops to run
-// plus the new field contents. The cursor is assumed at the end of `typed`.
-fn reconcile(typed: &str, want: &str) -> Vec<Op> {
-    plan(
-        &diff(typed, want),
-        typed.chars().count(),
-        want.chars().count(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn round_trip(have: &str, want: &str) -> String {
-        let mut f = have.to_string();
-        apply_ops_to_string(&mut f, &reconcile(have, want));
-        f
-    }
-
     #[test]
-    fn diff_round_trips() {
-        for (have, want) in [
-            ("", "hello world"),
-            ("hello", "hello world"),
-            ("Alright, here's a test", "All right, here's a test"),
-            ("the cat sat on the mat", "the dog sat on the rug"),
-            ("abc", "xyz"),
-            ("hello world", "hello"),
-            ("one two three four", "one TWO three FOUR five"),
-        ] {
-            assert_eq!(round_trip(have, want), want, "{have:?} -> {want:?}");
-        }
-    }
-
-    #[test]
-    fn diff_touches_only_the_changed_regions() {
-        // Two separate word changes → two hunks; the middle is left alone.
-        assert_eq!(
-            diff("the cat sat on the mat", "the dog sat on the rug").len(),
-            2
-        );
-    }
-
-    #[test]
-    fn word_diff_reports_drops_and_inserts() {
-        let a = words_lower("The quick, brown fox.");
-        let b = words_lower("the brown lazy fox");
-        let d = word_diff(&a, &b);
-        let dropped: Vec<&str> = d
-            .iter()
-            .filter(|(t, _)| *t == '-')
-            .map(|(_, w)| w.as_str())
-            .collect();
-        let inserted: Vec<&str> = d
-            .iter()
-            .filter(|(t, _)| *t == '+')
-            .map(|(_, w)| w.as_str())
-            .collect();
-        assert_eq!(dropped, ["quick"]);
-        assert_eq!(inserted, ["lazy"]);
+    fn only_the_new_tail_is_typed() {
+        assert_eq!(fresh("", "Hello"), "Hello");
+        assert_eq!(fresh("Hello", "Hello world"), " world");
+        assert_eq!(fresh("Hello world", "Hello world"), "");
+        assert_eq!(fresh("Hello world", "Hullo world"), "", "never retypes");
     }
 
     #[test]
@@ -296,12 +82,12 @@ mod tests {
 }
 
 // ---------------------------------------------------------------------------
-// Recognizer (sherpa-onnx FFI): decode a whole clip to text. Audio in, text out.
+// Recognizer (sherpa-onnx FFI): one streaming decode, audio in once, text out.
 // ---------------------------------------------------------------------------
 
-struct Recognizer {
-    rec: *const sherpa::SherpaOnnxOfflineRecognizer,
-}
+struct Recognizer(*const sherpa::SherpaOnnxOnlineRecognizer);
+
+struct Stream<'a>(&'a Recognizer, *const sherpa::SherpaOnnxOnlineStream);
 
 impl Recognizer {
     fn new() -> Result<Self> {
@@ -309,13 +95,11 @@ impl Recognizer {
         let decoder = CString::new(format!("{MODEL}/decoder.int8.onnx"))?;
         let joiner = CString::new(format!("{MODEL}/joiner.int8.onnx"))?;
         let tokens = CString::new(format!("{MODEL}/tokens.txt"))?;
-        let model_type = CString::new("nemo_transducer")?;
         let provider = CString::new("cpu")?;
         let decoding = CString::new("greedy_search")?;
-
         let rec = unsafe {
             // Zero-init is the documented way to default every unused field.
-            let mut config: sherpa::SherpaOnnxOfflineRecognizerConfig =
+            let mut config: sherpa::SherpaOnnxOnlineRecognizerConfig =
                 MaybeUninit::zeroed().assume_init();
             config.feat_config.sample_rate = SAMPLE_RATE;
             config.feat_config.feature_dim = 80;
@@ -323,57 +107,86 @@ impl Recognizer {
             config.model_config.transducer.decoder = decoder.as_ptr();
             config.model_config.transducer.joiner = joiner.as_ptr();
             config.model_config.tokens = tokens.as_ptr();
-            config.model_config.model_type = model_type.as_ptr();
             config.model_config.num_threads = 2;
             config.model_config.provider = provider.as_ptr();
             config.decoding_method = decoding.as_ptr();
-            sherpa::SherpaOnnxCreateOfflineRecognizer(&config)
+            sherpa::SherpaOnnxCreateOnlineRecognizer(&config)
         };
         if rec.is_null() {
-            bail!("failed to create sherpa-onnx offline recognizer");
+            bail!("failed to create sherpa-onnx online recognizer");
         }
-        Ok(Recognizer { rec })
+        Ok(Recognizer(rec))
     }
 
-    // Decode `samples` into text (with the model's own punctuation/casing).
-    fn decode(&self, samples: &[f32]) -> String {
+    fn stream(&self) -> Stream<'_> {
+        Stream(self, unsafe { sherpa::SherpaOnnxCreateOnlineStream(self.0) })
+    }
+}
+
+impl Stream<'_> {
+    // Take new audio and decode every chunk it completes.
+    fn hear(&self, samples: &[f32]) {
         unsafe {
-            let stream = sherpa::SherpaOnnxCreateOfflineStream(self.rec);
-            sherpa::SherpaOnnxAcceptWaveformOffline(
-                stream,
+            sherpa::SherpaOnnxOnlineStreamAcceptWaveform(
+                self.1,
                 SAMPLE_RATE,
                 samples.as_ptr(),
                 samples.len() as i32,
             );
-            sherpa::SherpaOnnxDecodeOfflineStream(self.rec, stream);
-            let result = sherpa::SherpaOnnxGetOfflineStreamResult(stream);
+        }
+        self.decode();
+    }
+
+    // No more audio: a little silence to carry the last chunk through.
+    fn finish(&self) {
+        self.hear(&[0.0; TAIL]);
+        unsafe { sherpa::SherpaOnnxOnlineStreamInputFinished(self.1) };
+        self.decode();
+    }
+
+    fn decode(&self) {
+        unsafe {
+            while sherpa::SherpaOnnxIsOnlineStreamReady(self.0.0, self.1) != 0 {
+                sherpa::SherpaOnnxDecodeOnlineStream(self.0.0, self.1);
+            }
+        }
+    }
+
+    // Everything heard so far, with the model's own punctuation and casing.
+    fn text(&self) -> String {
+        unsafe {
+            let result = sherpa::SherpaOnnxGetOnlineStreamResult(self.0.0, self.1);
             let text = if result.is_null() || (*result).text.is_null() {
                 String::new()
             } else {
                 CStr::from_ptr((*result).text)
                     .to_string_lossy()
-                    .into_owned()
+                    .trim_start()
+                    .to_string()
             };
-            sherpa::SherpaOnnxDestroyOfflineRecognizerResult(result);
-            sherpa::SherpaOnnxDestroyOfflineStream(stream);
+            sherpa::SherpaOnnxDestroyOnlineRecognizerResult(result);
             text
         }
     }
 }
 
+impl Drop for Stream<'_> {
+    fn drop(&mut self) {
+        unsafe { sherpa::SherpaOnnxDestroyOnlineStream(self.1) };
+    }
+}
+
 impl Drop for Recognizer {
     fn drop(&mut self) {
-        unsafe { sherpa::SherpaOnnxDestroyOfflineRecognizer(self.rec) };
+        unsafe { sherpa::SherpaOnnxDestroyOnlineRecognizer(self.0) };
     }
 }
 
 // ---------------------------------------------------------------------------
-// I/O edges: process lifecycle, capture, decode loop, typist.
+// I/O edges: process lifecycle, capture, the listen loop.
 // ---------------------------------------------------------------------------
 
-// Per-user runtime dir for our pidfile (XDG_RUNTIME_DIR/dictate), created on
-// demand. `place_runtime_file` ensures the dir exists; `find_runtime_file`
-// returns the path only if the file is present.
+// Per-user runtime dir for our pidfile (XDG_RUNTIME_DIR/dictate).
 fn runtime_dir() -> Result<xdg::BaseDirectories> {
     xdg::BaseDirectories::with_prefix("dictate").context("locating XDG runtime dir")
 }
@@ -382,23 +195,20 @@ fn alive(pid: i32) -> bool {
     kill(Pid::from_raw(pid), None).is_ok()
 }
 
-// Common pw-record invocation: 16 kHz mono s16, from the filtered mic when
-// mic-filter is up, the default source otherwise. Callers add the output
-// (a WAV path for `record`, or `--raw -` to stream raw PCM to stdout).
-fn base_recorder() -> Command {
-    let have_target = Command::new(format!("{PIPEWIRE}/bin/pw-cli"))
+// pw-record as raw 16 kHz mono s16 on stdout, from the filtered mic when
+// mic-filter is up, the default source otherwise.
+fn recorder() -> Command {
+    let have_target = Command::new(PW_CLI)
         .args(["info", TARGET])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    let mut cmd = Command::new(format!("{PIPEWIRE}/bin/pw-record"));
+        .is_ok_and(|s| s.success());
+    let mut cmd = Command::new(PW_RECORD);
     if have_target {
         cmd.args(["--target", TARGET]);
     }
-    cmd.args(["--rate=16000", "--channels=1", "--format=s16"]);
+    cmd.args(["--rate=16000", "--channels=1", "--format=s16", "--raw", "-"]);
     cmd
 }
 
@@ -406,19 +216,17 @@ fn base_recorder() -> Command {
 // it doesn't block the sway keybinding; `dictate stop` (release) signals it.
 fn start() -> Result<()> {
     let pidfile = runtime_dir()?.place_runtime_file("pid")?;
-    if let Ok(s) = fs::read_to_string(&pidfile) {
-        if s.trim().parse().map(alive).unwrap_or(false) {
-            return Ok(());
-        }
+    if let Ok(s) = fs::read_to_string(&pidfile)
+        && s.trim().parse().is_ok_and(alive)
+    {
+        return Ok(());
     }
-    let exe = std::env::current_exe()?;
-    let child = Command::new(exe)
+    let child = Command::new(std::env::current_exe()?)
         .arg("__run")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        // Detach into its own session so the release keybinding can't deliver
-        // terminal signals to it.
+        // Its own session, so the release keybinding can't signal it.
         .process_group(0)
         .spawn()
         .context("spawning dictate worker")?;
@@ -439,178 +247,123 @@ fn stop() -> Result<()> {
     Ok(())
 }
 
-// Capture thread: read raw s16 PCM from pw-record's stdout and append samples
-// to the shared clip until the stream ends (pw-record exits on SIGINT). Carries
-// any odd trailing byte across reads.
+// Capture thread: append pw-record's samples to the clip until it exits.
 fn capture(mut stdout: ChildStdout, clip: Arc<Mutex<Vec<f32>>>) {
     let mut carry: Vec<u8> = Vec::new();
     let mut buf = [0u8; 8192];
-    loop {
-        let n = match stdout.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => n,
-        };
+    while let Ok(n @ 1..) = stdout.read(&mut buf) {
         carry.extend_from_slice(&buf[..n]);
         let (samples, leftover) = pcm_to_f32(&carry);
         carry = leftover.into_iter().collect();
-        if !samples.is_empty() {
-            clip.lock().unwrap().extend_from_slice(&samples);
-        }
+        clip.lock().unwrap().extend_from_slice(&samples);
     }
 }
 
-// Typist thread: own the keyboard and the model of the field. Receive desired
-// text, coalesce to the latest, re-anchor the cursor to the end, and apply the
-// minimal multi-region edit. Re-anchoring each time means a stray/dropped key
-// can never compound across reconciles.
-fn typist(rx: Receiver<String>) -> Result<()> {
-    let mut kbd = keyboard::Keyboard::new()?;
-    let mut typed = String::new();
-    while let Ok(mut want) = rx.recv() {
-        while let Ok(newer) = rx.try_recv() {
-            want = newer; // only the latest decode matters
+// Feed the clip to one stream as it grows, typing each new tail of the
+// transcript, until `ended` is set and the clip is drained.
+fn listen(
+    clip: &Mutex<Vec<f32>>,
+    ended: &AtomicBool,
+    mut out: impl FnMut(&str) -> Result<()>,
+) -> Result<()> {
+    let recognizer = Recognizer::new()?;
+    let stream = recognizer.stream();
+    let (mut fed, mut typed) = (0, String::new());
+    loop {
+        // Ended first: then the clip read after holds everything there will be.
+        let over = ended.load(Ordering::SeqCst);
+        let new: Vec<f32> = clip.lock().unwrap()[fed..].to_vec();
+        if new.is_empty() && over {
+            break;
         }
-        if want == typed {
+        if new.is_empty() {
+            sleep(Duration::from_millis(20));
             continue;
         }
-        kbd.to_end()?;
-        kbd.apply(&reconcile(&typed, &want))?;
-        typed = want;
+        fed += new.len();
+        stream.hear(&new);
+        let text = stream.text();
+        out(fresh(&typed, &text))?;
+        typed = text;
     }
+    stream.finish();
+    out(fresh(&typed, &stream.text()))
+}
+
+fn wtype(text: &str) -> Result<()> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    Command::new(WTYPE)
+        .args(["--", text])
+        .status()
+        .context("running wtype")?;
     Ok(())
 }
 
-// The worker: capture the mic, re-decode the whole clip back-to-back, send the
-// desired text to the typist. Three threads passing events; the decode time is
-// the natural pace.
+// The worker: capture the mic and type what it hears until released.
 fn run() -> Result<()> {
-    // `stop` (release) signals SIGTERM; flip the flag and let the loop drain.
     let stop = Arc::new(AtomicBool::new(false));
     flag::register(SIGTERM, stop.clone())?;
     flag::register(SIGINT, stop.clone())?;
 
-    let mut recorder = base_recorder()
-        .arg("--raw")
-        .arg("-")
+    let mut recorder = recorder()
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .context("spawning pw-record")?;
     let stdout = recorder.stdout.take().context("pw-record has no stdout")?;
-
-    let clip = Arc::new(Mutex::new(Vec::<f32>::new()));
-    let cap_clip = clip.clone();
-    let capture = thread::spawn(move || capture(stdout, cap_clip));
-
-    let (tx, rx) = mpsc::channel::<String>();
-    let typist = thread::spawn(move || typist(rx));
-
-    // Load the model once. Recording is already buffering into `clip`, so any
-    // speech during this load is decoded as soon as we catch up.
-    let recognizer = Recognizer::new()?;
-
-    // Decode whenever new audio has arrived; send the desired text on change.
-    let mut last_len = 0;
-    let mut last_sent = String::new();
-    while !stop.load(Ordering::SeqCst) {
-        let samples = clip.lock().unwrap().clone();
-        if samples.len() == last_len {
-            sleep(Duration::from_millis(15));
-            continue;
-        }
-        last_len = samples.len();
-        let want = recognizer.decode(&samples).trim().to_string();
-        // An empty decode means silence/garble — never reconcile to it.
-        if !want.is_empty() && want != last_sent {
-            last_sent = want.clone();
-            let _ = tx.send(want);
-        }
+    let clip = Arc::new(Mutex::new(Vec::new()));
+    let ended = Arc::new(AtomicBool::new(false));
+    {
+        let (clip, ended, stop) = (clip.clone(), ended.clone(), stop.clone());
+        let pid = Pid::from_raw(recorder.id() as i32);
+        thread::spawn(move || {
+            let capturing = {
+                let clip = clip.clone();
+                thread::spawn(move || capture(stdout, clip))
+            };
+            while !stop.load(Ordering::SeqCst) {
+                sleep(Duration::from_millis(15));
+            }
+            // Released: pw-record flushes its tail on SIGINT, then capture ends.
+            let _ = kill(pid, Signal::SIGINT);
+            let _ = capturing.join();
+            ended.store(true, Ordering::SeqCst);
+        });
     }
-
-    // Released: stop the recorder, let capture drain the tail, decode once more
-    // over the whole clip so the settled text is exactly the full-file decode.
-    let _ = kill(Pid::from_raw(recorder.id() as i32), Signal::SIGINT);
-    let _ = capture.join();
-    let samples = clip.lock().unwrap().clone();
-    let want = recognizer.decode(&samples).trim().to_string();
-    if !want.is_empty() && want != last_sent {
-        let _ = tx.send(want);
-    }
-    drop(tx);
-    let _ = typist.join();
+    listen(&clip, &ended, wtype)?;
     let _ = recorder.wait();
-    if let Ok(xdg) = runtime_dir() {
-        if let Some(pidfile) = xdg.find_runtime_file("pid") {
-            let _ = fs::remove_file(pidfile);
-        }
+    if let Some(pidfile) = runtime_dir().ok().and_then(|x| x.find_runtime_file("pid")) {
+        let _ = fs::remove_file(pidfile);
     }
     Ok(())
 }
 
-// `dictate record <wav>`: capture a test clip from the same source the worker
-// uses. Runs until Ctrl-C, which lets pw-record finalize the WAV.
-fn record(path: &str) -> Result<()> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() && !parent.is_dir() {
-            bail!("directory does not exist: {}", parent.display());
-        }
-    }
-    eprintln!("recording to {path} — speak, then Ctrl-C to stop");
-    // Inherit stdio so pw-record's own errors are visible; Ctrl-C is the normal
-    // stop, so its signal exit isn't treated as a failure.
-    base_recorder()
-        .arg(path)
-        .status()
-        .context("running pw-record")?;
-    Ok(())
-}
-
-// Read a 16 kHz mono s16 WAV (as produced by `record`) into f32 samples.
-fn read_wav_f32(path: &str) -> Result<Vec<f32>> {
-    let bytes = fs::read(path).with_context(|| format!("reading {path}"))?;
-    let pcm = bytes.get(44..).unwrap_or(&[]);
-    Ok(pcm_to_f32(pcm).0)
-}
-
-// `dictate replay <wav>`: stream a recorded WAV through the exact reconcile path
-// (no mic, no keyboard) in chunks, then word-diff the result against a plain
-// full-file decode — dropped = words we lost, inserted = filler we hallucinated.
+// `dictate replay <wav>`: a 16 kHz mono s16 WAV through the same listen loop,
+// at ten times speed, printing each typed tail on its own line.
 fn replay(path: &str) -> Result<()> {
-    let samples = read_wav_f32(path)?;
-    let recognizer = Recognizer::new()?;
-
-    let mut typed = String::new();
-    let mut field = String::new();
-    let mut clip: Vec<f32> = Vec::new();
-    let chunk = (SAMPLE_RATE as usize * DECODE_INTERVAL_MS as usize / 1000).max(1);
-    for window in samples.chunks(chunk) {
-        clip.extend_from_slice(window);
-        let want = recognizer.decode(&clip).trim().to_string();
-        if want.is_empty() {
-            continue;
-        }
-        apply_ops_to_string(&mut field, &reconcile(&typed, &want));
-        typed = want;
+    let bytes = fs::read(path).with_context(|| format!("reading {path}"))?;
+    let samples = pcm_to_f32(bytes.get(44..).unwrap_or(&[])).0;
+    let clip = Arc::new(Mutex::new(Vec::new()));
+    let ended = Arc::new(AtomicBool::new(false));
+    {
+        let (clip, ended) = (clip.clone(), ended.clone());
+        thread::spawn(move || {
+            for second in samples.chunks(SAMPLE_RATE as usize) {
+                clip.lock().unwrap().extend_from_slice(second);
+                sleep(Duration::from_millis(100));
+            }
+            ended.store(true, Ordering::SeqCst);
+        });
     }
-
-    let full = recognizer.decode(&samples);
-    let wd = word_diff(&words_lower(&full), &words_lower(&field));
-    let dropped: Vec<&str> = wd
-        .iter()
-        .filter(|(t, _)| *t == '-')
-        .map(|(_, w)| w.as_str())
-        .collect();
-    let inserted: Vec<&str> = wd
-        .iter()
-        .filter(|(t, _)| *t == '+')
-        .map(|(_, w)| w.as_str())
-        .collect();
-
-    eprintln!("streaming : {}", field.trim());
-    eprintln!("full-file : {}", full.trim());
-    eprintln!("dropped   ({}): {dropped:?}", dropped.len());
-    eprintln!("inserted  ({}): {inserted:?}", inserted.len());
-    Ok(())
+    let mut stdout = std::io::stdout().lock();
+    listen(&clip, &ended, |tail| {
+        if !tail.is_empty() {
+            writeln!(stdout, "{tail}")?;
+        }
+        Ok(())
+    })
 }
 
 fn main() -> Result<()> {
@@ -619,17 +372,7 @@ fn main() -> Result<()> {
         Some("start") => start(),
         Some("stop") => stop(),
         Some("__run") => run(),
-        Some("record") => record(args.get(2).context("usage: dictate record <wav>")?),
         Some("replay") => replay(args.get(2).context("usage: dictate replay <wav>")?),
-        Some("type") => {
-            let mut kb = keyboard::Keyboard::new()?;
-            kb.type_text(
-                args.get(2)
-                    .map(String::as_str)
-                    .unwrap_or("dictate keyboard test"),
-            )?;
-            Ok(())
-        }
-        _ => bail!("usage: dictate <start|stop|record <wav>|replay <wav>>"),
+        _ => bail!("usage: dictate <start|stop|replay <wav>>"),
     }
 }
