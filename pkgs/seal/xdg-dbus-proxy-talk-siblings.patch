@@ -1,0 +1,126 @@
+--- a/dbus-proxy.c
++++ b/dbus-proxy.c
+@@ -61,6 +61,7 @@
+            "    --filter                     Enable filtering\n"
+            "    --log                        Turn on logging\n"
+            "    --sloppy-names               Report name changes for unique names\n"
++           "    --talk-siblings              Let clients of this proxy talk to each other\n"
+            "    --see=NAME                   Set 'see' policy for NAME\n"
+            "    --talk=NAME                  Set 'talk' policy for NAME\n"
+            "    --own=NAME                   Set 'own' policy for NAME\n"
+@@ -337,6 +338,11 @@
+           flatpak_proxy_set_sloppy_names (proxy, TRUE);
+           *args_i += 1;
+         }
++      else if (g_str_equal (arg, "--talk-siblings"))
++        {
++          flatpak_proxy_set_talk_siblings (proxy, TRUE);
++          *args_i += 1;
++        }
+       else
+         {
+           if (!parse_generic_args (args, args_i))
+--- a/flatpak-proxy.c
++++ b/flatpak-proxy.c
+@@ -398,6 +398,8 @@
+ 
+   GHashTable *unique_id_policy;
+   GHashTable *unique_id_owned_names;
++
++  char       *unique_id;
+ };
+ 
+ typedef struct
+@@ -417,6 +419,7 @@
+ 
+   gboolean       filter;
+   gboolean       sloppy_names;
++  gboolean       talk_siblings;
+ 
+   GHashTable    *filters;
+ };
+@@ -506,6 +509,7 @@
+   g_hash_table_destroy (client->get_owner_reply);
+   g_hash_table_destroy (client->unique_id_policy);
+   g_hash_table_destroy (client->unique_id_owned_names);
++  g_free (client->unique_id);
+   g_hash_table_destroy (client->expected_replies_from_bus);
+   g_hash_table_destroy (client->expected_replies_from_client);
+ 
+@@ -583,6 +587,30 @@
+ }
+ 
+ void
++flatpak_proxy_set_talk_siblings (FlatpakProxy *proxy,
++                                 gboolean      talk_siblings)
++{
++  proxy->talk_siblings = talk_siblings;
++}
++
++static gboolean
++flatpak_proxy_is_sibling (FlatpakProxy *proxy,
++                          const char   *unique_id)
++{
++  GList *l;
++
++  for (l = proxy->clients; l != NULL; l = l->next)
++    {
++      FlatpakProxyClient *other = l->data;
++
++      if (g_strcmp0 (other->unique_id, unique_id) == 0)
++        return TRUE;
++    }
++
++  return FALSE;
++}
++
++void
+ flatpak_proxy_set_log_messages (FlatpakProxy *proxy,
+                                 gboolean      log)
+ {
+@@ -1928,6 +1956,11 @@
+     {
+       /* Default to the unique id policy, i.e. TALK for self, and SEE for trusted peers */
+       max_policy = GPOINTER_TO_UINT (g_hash_table_lookup (client->unique_id_policy, source));
++
++      /* Other clients of this proxy share our sandbox, so they may talk to each other */
++      if (client->proxy->talk_siblings && flatpak_proxy_is_sibling (client->proxy, source))
++        max_policy = MAX (max_policy, FLATPAK_POLICY_TALK);
++
+       if (max_policy > FLATPAK_POLICY_NONE && matched_filters)
+         *matched_filters = g_list_append (*matched_filters, match_all[max_policy]);
+ 
+@@ -2896,6 +2929,8 @@
+                 {
+                   g_autofree char *my_id = get_arg0_string (buffer);
+                   flatpak_proxy_client_update_unique_id_policy (client, my_id, FLATPAK_POLICY_TALK);
++                  g_free (client->unique_id);
++                  client->unique_id = g_strdup (my_id);
+                 }
+               /* ... else it's an ERROR or something. Either way, pass it
+                * through to the client unedited. */
+--- a/flatpak-proxy.h
++++ b/flatpak-proxy.h
+@@ -49,6 +49,8 @@
+                                        gboolean      filter);
+ void         flatpak_proxy_set_sloppy_names (FlatpakProxy *proxy,
+                                              gboolean      sloppy_names);
++void         flatpak_proxy_set_talk_siblings (FlatpakProxy *proxy,
++                                              gboolean      talk_siblings);
+ void         flatpak_proxy_add_policy (FlatpakProxy *proxy,
+                                        const char   *name,
+                                        gboolean      name_is_subtree,
+--- a/xdg-dbus-proxy.xml
++++ b/xdg-dbus-proxy.xml
+@@ -188,6 +188,11 @@
+       <listitem><para>Make all unique names visible.</para></listitem>
+     </varlistentry>
+     <varlistentry>
++      <term><option>--talk-siblings</option></term>
++      <listitem><para>Give every client of this proxy the TALK policy for the
++      unique names of the other clients of this proxy.</para></listitem>
++    </varlistentry>
++    <varlistentry>
+       <term><option>--see=<replaceable>NAME</replaceable></option></term>
+       <listitem><para>Set the SEE policy for the given name.</para></listitem>
+     </varlistentry>

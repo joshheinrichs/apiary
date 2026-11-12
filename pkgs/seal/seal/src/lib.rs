@@ -1219,6 +1219,7 @@ fn spawn_dbus_proxy(args: &SandboxArgs, socket: &str) -> io::Result<Service> {
     cmd.arg(&dbus_addr)
         .arg(socket)
         .arg("--filter")
+        .arg("--talk-siblings")
         .arg(format!("--fd={}", proxy_fd))
         .args(args.dbus_talk.iter().map(|n| format!("--talk={}", n)))
         .args(args.dbus_own.iter().map(|n| format!("--own={}", n)));

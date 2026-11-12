@@ -1,5 +1,10 @@
 { pkgs }:
 let
+  # Lets processes inside one seal message each other: https://github.com/flatpak/xdg-dbus-proxy/issues/25
+  # Idea: give each seal its own D-Bus and bridge only chosen name patterns to the host bus.
+  xdg-dbus-proxy = pkgs.xdg-dbus-proxy.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./xdg-dbus-proxy-talk-siblings.patch ];
+  });
   common = {
     version = "0.1.0";
     src = ./.;
@@ -20,7 +25,7 @@ let
       ];
       # Bake dependency paths into the binary at compile time
       BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
-      XDG_DBUS_PROXY = "${pkgs.xdg-dbus-proxy}/bin/xdg-dbus-proxy";
+      XDG_DBUS_PROXY = "${xdg-dbus-proxy}/bin/xdg-dbus-proxy";
       PASTA = "${pkgs.passt}/bin/pasta";
       CAGE = "${pkgs.cage}/bin/cage";
       PIPEWIRE = "${pkgs.pipewire}/bin/pipewire";

@@ -14,6 +14,8 @@ pkgs.runCommand "sealed-steam"
     # /run/opengl-driver are host store paths outside any closure we build.
     # Wine builds GetLogicalProcessorInformation from /sys/devices/system/cpu;
     # without it MSVC's Concurrency Runtime throws (MapleStory's jypc.dll).
+    # No 32-bit graphics drivers: 32-bit Windows games that crash need
+    # PROTON_USE_WOW64=1 %command% in their launch options.
     seal-generator install \
       --bin=steam \
       --gui \
@@ -27,10 +29,10 @@ pkgs.runCommand "sealed-steam"
       '--dbus-talk=org.freedesktop.portal.*' \
       --dbus-talk=org.freedesktop.Notifications \
       --dbus-talk=org.kde.StatusNotifierWatcher \
+      '--dbus-own=com.steampowered.PressureVessel.LaunchAlongsideSteam.*' \
       --persist-home=steam \
       --share-tmp=steam \
       --ro-bind=/nix/store:/nix/store \
-      --ro-bind=${pkgs.pkgsi686Linux.mesa}:/run/opengl-driver-32 \
       --ro-bind=/sys/devices/system/cpu:/sys/devices/system/cpu \
       --set-env=PATH=${pkgs.coreutils}/bin \
       --set-env=NIXOS_XDG_OPEN_USE_PORTAL=1 \
