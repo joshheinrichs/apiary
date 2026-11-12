@@ -2,14 +2,14 @@
   # git ls-remote https://github.com/NixOS/nixpkgs nixos-unstable
   nixpkgs-src = builtins.fetchGit {
     url = "https://github.com/NixOS/nixpkgs";
-    rev = "02c087f3fe673c9e317f206a627cb6b910336dbe";
+    rev = "177d0540942fb205af6993b1d5fa0b57799e09f8";
     ref = "nixos-unstable";
     shallow = true;
   };
   # git ls-remote https://github.com/xddxdd/nix-cachyos-kernel release
   nix-cachyos-kernel-src = builtins.fetchGit {
     url = "https://github.com/xddxdd/nix-cachyos-kernel";
-    rev = "b1332396df6e880d7e3b6b451c6a74132ce8cf66";
+    rev = "53532f14476a597abeaa67bca19f2c009a043fb6";
     ref = "release";
     shallow = true;
   };

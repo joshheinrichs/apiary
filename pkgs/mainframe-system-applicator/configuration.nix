@@ -40,19 +40,12 @@ in
     "tpm2-device=auto"
   ];
   boot.kernelPackages = pkgs.cachyosKernels.linuxPackages-cachyos-latest;
-  services.scx = {
+  services.scx-loader = {
     enable = true;
-    scheduler = "scx_cosmos";
+    config.default_sched = "scx_cosmos";
   };
   # gcadapter_oc polls the GameCube adapter every 1ms instead of 8ms.
-  # nixpkgs' package skips modules_install, so it never gets the kmodigest .ko.cer the aggregator needs.
-  boot.extraModulePackages = [
-    (config.boot.kernelPackages.gcadapter-oc-kmod.overrideAttrs (old: {
-      installPhase = old.installPhase + ''
-        ${lib.getExe pkgs.buildPackages.kmodigest} $out/lib/modules/${config.boot.kernelPackages.kernel.modDirVersion}/extra/gcadapter_oc.ko
-      '';
-    }))
-  ];
+  boot.extraModulePackages = [ config.boot.kernelPackages.gcadapter-oc-kmod ];
   boot.kernelModules = [
     "ntsync"
     "gcadapter_oc"
