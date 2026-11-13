@@ -7,6 +7,8 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use walkdir::WalkDir;
 
+mod watch;
+
 fn home_dir() -> PathBuf {
     dirs::home_dir().expect("HOME not set")
 }
@@ -30,7 +32,11 @@ fn add_gc_root(home_files: &Path) -> Result<()> {
         .stdout(std::process::Stdio::null())
         .status()
         .context("running nix-store --add-root")?;
-    anyhow::ensure!(status.success(), "nix-store --add-root {} failed", root.display());
+    anyhow::ensure!(
+        status.success(),
+        "nix-store --add-root {} failed",
+        root.display()
+    );
     Ok(())
 }
 
@@ -45,28 +51,32 @@ fn relative_paths(root: &Path) -> Result<HashSet<PathBuf>> {
     Ok(paths)
 }
 
-fn remove_old_symlinks(old_home_files: &Path) -> Result<()> {
+fn remove_old_symlinks(
+    old_home_files: &Path,
+    paths: &HashSet<PathBuf>,
+    progress: &mut dyn FnMut(usize),
+) -> Result<usize> {
     let home = home_dir();
-    let paths = relative_paths(old_home_files)?;
     let mut removed = 0usize;
-    for rel in &paths {
+    for (i, rel) in paths.iter().enumerate() {
+        progress(i);
         let dest = home.join(rel);
-        if let Ok(link_dest) = fs::read_link(&dest) {
-            if link_dest == old_home_files.join(rel) {
-                fs::remove_file(&dest).with_context(|| format!("removing {}", dest.display()))?;
-                removed += 1;
-            }
+        if fs::read_link(&dest).is_ok_and(|l| l == old_home_files.join(rel)) {
+            fs::remove_file(&dest).with_context(|| format!("removing {}", dest.display()))?;
+            removed += 1;
         }
     }
-    eprintln!("removed {removed} old symlinks");
-    Ok(())
+    Ok(removed)
 }
 
-fn create_new_symlinks(new_home_files: &Path) -> Result<()> {
+fn create_new_symlinks(
+    new_home_files: &Path,
+    paths: &HashSet<PathBuf>,
+    progress: &mut dyn FnMut(usize),
+) -> Result<usize> {
     let home = home_dir();
-    let paths = relative_paths(new_home_files)?;
-    let total = paths.len();
-    for rel in &paths {
+    for (i, rel) in paths.iter().enumerate() {
+        progress(i);
         let src = new_home_files.join(rel);
         let dest = home.join(rel);
         if let Some(parent) = dest.parent() {
@@ -80,8 +90,7 @@ fn create_new_symlinks(new_home_files: &Path) -> Result<()> {
         symlink(&src, &dest)
             .with_context(|| format!("symlinking {} -> {}", dest.display(), src.display()))?;
     }
-    eprintln!("linked {total} files");
-    Ok(())
+    Ok(paths.len())
 }
 
 fn systemd_units(home_files: &Path) -> HashSet<String> {
@@ -104,67 +113,27 @@ fn unit_content(home_files: &Path, unit: &str) -> Option<Vec<u8>> {
     fs::read(path).ok()
 }
 
-fn reconcile_systemd(old_home_files: Option<&Path>, new_home_files: &Path) -> Result<()> {
+fn plan_systemd(old_home_files: Option<&Path>, new_home_files: &Path) -> watch::Plan {
     let old_units: HashSet<String> = old_home_files.map(systemd_units).unwrap_or_default();
     let new_units = systemd_units(new_home_files);
 
-    let changed: HashSet<&String> = old_units
+    let sorted = |units: Vec<&String>| {
+        let mut units: Vec<String> = units.into_iter().cloned().collect();
+        units.sort();
+        units
+    };
+    let changed = old_units
         .iter()
         .filter(|u| {
             new_units.contains(*u)
                 && unit_content(old_home_files.unwrap(), u) != unit_content(new_home_files, u)
         })
         .collect();
-
-    let removed: HashSet<&String> = old_units.difference(&new_units).collect();
-    let added: HashSet<&String> = new_units.difference(&old_units).collect();
-
-    let to_stop: Vec<&&String> = removed.iter().chain(changed.iter()).collect();
-    if !to_stop.is_empty() {
-        eprintln!(
-            "stopping: {}",
-            to_stop
-                .iter()
-                .map(|u| u.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        Command::new("systemctl")
-            .args(["--user", "stop"])
-            .args(to_stop.iter().map(|u| u.as_str()))
-            .status()
-            .context("systemctl stop")?;
+    watch::Plan {
+        removed: sorted(old_units.difference(&new_units).collect()),
+        changed: sorted(changed),
+        added: sorted(new_units.difference(&old_units).collect()),
     }
-
-    eprintln!("reloading systemd");
-    Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status()
-        .context("systemctl daemon-reload")?;
-
-    let to_start: Vec<&&String> = added
-        .iter()
-        .chain(changed.iter())
-        .filter(|u| u.ends_with(".service") || u.ends_with(".socket"))
-        .collect();
-
-    if !to_start.is_empty() {
-        eprintln!(
-            "starting: {}",
-            to_start
-                .iter()
-                .map(|u| u.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        Command::new("systemctl")
-            .args(["--user", "start"])
-            .args(to_start.iter().map(|u| u.as_str()))
-            .status()
-            .context("systemctl start")?;
-    }
-
-    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -178,27 +147,34 @@ fn main() -> Result<()> {
         .canonicalize()
         .with_context(|| format!("resolving {}", new_home_files.display()))?;
 
-    eprintln!("applying {}", new_home_files.display());
-
     let state = state_path();
     let old_home_files: Option<PathBuf> = fs::read_to_string(&state)
         .ok()
         .map(|s| PathBuf::from(s.trim()));
+    // Collected before it was rooted: its links can no longer be told apart, so the new ones
+    // just replace whatever is at their paths.
+    let old_paths = match &old_home_files {
+        Some(old) if old.exists() => relative_paths(old)?,
+        _ => HashSet::new(),
+    };
+    let new_paths = relative_paths(&new_home_files)?;
+    let plan = plan_systemd(old_home_files.as_deref(), &new_home_files);
 
-    match old_home_files {
-        Some(ref old) if old.exists() => {
-            eprintln!("previous: {}", old.display());
-            remove_old_symlinks(old)?;
-        }
-        // Collected before it was rooted: its links can no longer be told apart, so
-        // the new ones just replace whatever is at their paths.
-        Some(ref old) => eprintln!("previous {} is gone; not removing old links", old.display()),
-        None => {}
-    }
-
-    create_new_symlinks(&new_home_files)?;
-
-    reconcile_systemd(old_home_files.as_deref(), &new_home_files)?;
+    let goal = new_home_files.display().to_string();
+    let mut session = watch::Session::open(goal, &plan)?;
+    session.step(
+        watch::Verb::Unlink,
+        old_paths.len(),
+        |progress| match &old_home_files {
+            Some(old) => remove_old_symlinks(old, &old_paths, progress),
+            None => Ok(0),
+        },
+    )?;
+    session.step(watch::Verb::Link, new_paths.len(), |progress| {
+        create_new_symlinks(&new_home_files, &new_paths, progress)
+    })?;
+    let failed = session.systemd(&plan)?;
+    drop(session);
 
     if let Some(parent) = state.parent() {
         fs::create_dir_all(parent)?;
@@ -206,6 +182,6 @@ fn main() -> Result<()> {
     add_gc_root(&new_home_files)?;
     fs::write(&state, new_home_files.to_string_lossy().as_bytes())?;
 
-    eprintln!("done");
+    anyhow::ensure!(failed.is_empty(), "failed to start: {}", failed.join(", "));
     Ok(())
 }

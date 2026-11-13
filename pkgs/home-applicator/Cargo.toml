@@ -7,3 +7,7 @@ edition = "2024"
 walkdir = "2"
 anyhow = "1"
 dirs = "6"
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+zbus = "5.19"
+systemd = { version = "0.11.1", default-features = false, features = ["journal"] }
+jiff = "0.2.43"
